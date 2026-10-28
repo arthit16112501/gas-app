@@ -1,0 +1,288 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>ระบบจัดการออเดอร์แก๊ส</title>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Thai:wght@400;500;700&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"></script>
+<style>
+:root{
+  --bg:#EEF1F0; --surface:#fff; --ink:#1B2A33; --muted:#5C6B73; --line:#D5DCDA;
+  --steel:#1F4E5F; --steel-ink:#fff; --brass:#B7832F;
+  --wait:#C8461F; --ship:#B7832F; --done:#2C7A55; --cancel:#7A858B;
+  color-scheme:light;
+}
+@media (prefers-color-scheme:dark){
+  :root{--bg:#10181C; --surface:#18232A; --ink:#E7EEF0; --muted:#97A7AE; --line:#2B3A42;
+  --steel:#5FB0C8; --steel-ink:#0B1519; --brass:#D9A650; --wait:#F08A66; --ship:#D9A650; --done:#62C493; --cancel:#8C989E; color-scheme:dark;}
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.5 "IBM Plex Sans Thai",system-ui,sans-serif;
+  padding:env(safe-area-inset-top) 0 env(safe-area-inset-bottom)}
+button,input,select,textarea{font:inherit;color:inherit}
+:focus-visible{outline:3px solid var(--brass);outline-offset:2px}
+.wrap{max-width:1000px;margin:0 auto;padding:12px 14px 80px}
+header{display:flex;align-items:center;gap:12px;justify-content:space-between;padding:10px 0}
+h1{font-size:1.15rem;margin:0;font-weight:700}
+nav{display:flex;gap:4px;background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:4px;margin:6px 0 14px}
+nav button{flex:1;border:0;background:none;padding:10px;border-radius:7px;cursor:pointer;color:var(--muted);font-weight:500}
+nav button[aria-selected=true]{background:var(--steel);color:var(--steel-ink)}
+.btn{border:1px solid var(--line);background:var(--surface);padding:9px 14px;border-radius:8px;cursor:pointer;font-weight:500}
+.btn.primary{background:var(--steel);color:var(--steel-ink);border-color:var(--steel)}
+.btn.small{padding:5px 10px;font-size:.9rem}
+input,select,textarea{width:100%;padding:10px;border:1px solid var(--line);border-radius:8px;background:var(--surface)}
+label{display:block;font-size:.9rem;color:var(--muted);margin:10px 0 4px}
+.bar{display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap}.bar input,.bar select{flex:1;min-width:140px}
+.row{background:var(--surface);border:1px solid var(--line);border-left:5px solid var(--cancel);border-radius:10px;padding:12px 14px;margin-bottom:10px;
+  display:grid;grid-template-columns:1fr auto;gap:6px 12px;align-items:center}
+.row.s-wait{border-left-color:var(--wait)}.row.s-ship{border-left-color:var(--ship)}.row.s-done{border-left-color:var(--done)}
+.row b{font-weight:700}.sub{color:var(--muted);font-size:.9rem}
+.price{font-weight:700;text-align:right;font-variant-numeric:tabular-nums}
+.actions{grid-column:1/-1;display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.actions select{width:auto}.actions input{width:170px}
+.stock{display:grid;grid-template-columns:1fr auto auto;gap:8px 14px;align-items:center}
+.qty{font-size:1.6rem;font-weight:700;font-variant-numeric:tabular-nums}.qty.low{color:var(--wait)}
+dialog{border:0;border-radius:14px;padding:18px;width:min(520px,94vw);background:var(--surface);color:var(--ink)}
+dialog::backdrop{background:rgba(0,0,0,.5)}
+.item{display:grid;grid-template-columns:1fr 90px;gap:8px;align-items:center;padding:6px 0;border-bottom:1px solid var(--line)}
+.msg{padding:10px 12px;border-radius:8px;margin:8px 0;background:var(--surface);border:1px solid var(--line)}
+.msg.err{border-color:var(--wait);color:var(--wait)}
+.empty{text-align:center;color:var(--muted);padding:30px 10px}
+#login{max-width:360px;margin:12vh auto;padding:0 16px}
+.hidden{display:none!important}
+</style>
+</head>
+<body>
+
+<section id="login" class="hidden">
+  <h1>เข้าสู่ระบบพนักงาน</h1>
+  <label for="em">อีเมล</label><input id="em" type="email" autocomplete="username">
+  <label for="pw">รหัสผ่าน</label><input id="pw" type="password" autocomplete="current-password">
+  <p id="loginMsg" class="msg err hidden"></p>
+  <p><button class="btn primary" id="loginBtn" style="width:100%">เข้าสู่ระบบ</button></p>
+</section>
+
+<main id="app" class="wrap hidden">
+  <header>
+    <h1>ระบบจัดการออเดอร์แก๊ส</h1>
+    <span><button class="btn primary" id="newOrderBtn">+ ออเดอร์ใหม่</button> <button class="btn" id="logout">ออกจากระบบ</button></span>
+  </header>
+  <nav role="tablist">
+    <button role="tab" data-tab="orders" aria-selected="true">ออเดอร์</button>
+    <button role="tab" data-tab="stock" aria-selected="false">สต็อก</button>
+    <button role="tab" data-tab="customers" aria-selected="false">ลูกค้า</button>
+  </nav>
+  <div id="notice"></div>
+  <div id="view"></div>
+</main>
+
+<dialog id="orderDlg">
+  <h1>ออเดอร์ใหม่</h1>
+  <label for="oPhone">เบอร์โทรลูกค้า</label>
+  <input id="oPhone" inputmode="tel" placeholder="0812345678">
+  <p id="oFound" class="sub"></p>
+  <label for="oName">ชื่อลูกค้า</label><input id="oName">
+  <label for="oAddr">ที่อยู่จัดส่ง</label><textarea id="oAddr" rows="2"></textarea>
+  <label for="oSrc">ช่องทาง</label>
+  <select id="oSrc"><option value="call_center">โทรศัพท์</option><option value="line">LINE</option><option value="facebook">Facebook</option><option value="web">หน้าร้าน/เว็บ</option></select>
+  <label>จำนวนถัง</label><div id="oItems"></div>
+  <p class="price" id="oTotal">รวม 0 บาท</p>
+  <p id="oErr" class="msg err hidden"></p>
+  <div style="display:flex;gap:8px;justify-content:flex-end">
+    <button class="btn" id="oCancel">ปิด</button><button class="btn primary" id="oSave">บันทึกออเดอร์</button>
+  </div>
+</dialog>
+
+<script>
+/* ===== ตั้งค่า: ใส่ค่าจาก Supabase > Project Settings > API ===== */
+const SUPABASE_URL = 'https://mhxclzsmikdudynznmdr.supabase.co';
+const SUPABASE_ANON_KEY = 'sb_publishable_WWemd8D9a_Slx4jSv-YLqQ_OZZW-l9-';
+/* ================================================================ */
+
+const STATUSES = ['รอดำเนินการ','กำลังจัดส่ง','จัดส่งแล้ว','ยกเลิก'];
+const $ = s => document.querySelector(s);
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const baht = n => Number(n).toLocaleString('th-TH') + ' บาท';
+const digits = s => { let d = (s||'').replace(/\D/g,''); if (d.startsWith('66') && d.length === 11) d = '0' + d.slice(2); return d; };
+const cls = s => s==='รอดำเนินการ'?'s-wait':s==='กำลังจัดส่ง'?'s-ship':s==='จัดส่งแล้ว'?'s-done':'';
+let sb, tab='orders', products=[];
+
+function notice(t, err){ $('#notice').innerHTML = t ? `<div class="msg ${err?'err':''}" role="status">${esc(t)}</div>` : ''; if(t) setTimeout(()=>$('#notice').innerHTML='',4000); }
+
+async function init(){
+  if (SUPABASE_URL.includes('YOUR-PROJECT')) {
+    $('#login').classList.remove('hidden');
+    $('#login').innerHTML = '<h1>ยังไม่ได้ตั้งค่า Supabase</h1><p>เปิดไฟล์นี้แล้วใส่ SUPABASE_URL และ SUPABASE_ANON_KEY ที่ส่วนต้นของ &lt;script&gt;</p>';
+    return;
+  }
+  sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+  const { data:{ session } } = await sb.auth.getSession();
+  session ? start() : $('#login').classList.remove('hidden');
+}
+$('#loginBtn').onclick = async () => {
+  const { error } = await sb.auth.signInWithPassword({ email:$('#em').value, password:$('#pw').value });
+  if (error) { const m=$('#loginMsg'); m.textContent='อีเมลหรือรหัสผ่านไม่ถูกต้อง'; m.classList.remove('hidden'); return; }
+  $('#login').classList.add('hidden'); start();
+};
+$('#logout').onclick = async () => { await sb.auth.signOut(); location.reload(); };
+
+async function start(){
+  $('#app').classList.remove('hidden');
+  await loadProducts();
+  render();
+  // Screen-pop จากระบบคอลเซ็นเตอร์: เปิดลิงก์ ?phone=0812345678
+  const p = new URLSearchParams(location.search).get('phone');
+  if (p) openOrder(digits(p));
+}
+async function loadProducts(){
+  const { data, error } = await sb.from('products').select('*').order('price');
+  if (error) return notice(error.message, true);
+  products = data;
+}
+
+document.querySelectorAll('nav button').forEach(b => b.onclick = () => {
+  tab = b.dataset.tab;
+  document.querySelectorAll('nav button').forEach(x => x.setAttribute('aria-selected', x===b));
+  render();
+});
+function render(){ ({orders:viewOrders, stock:viewStock, customers:viewCustomers})[tab](); }
+
+/* ---------- ออเดอร์ ---------- */
+async function viewOrders(){
+  $('#view').innerHTML = `<div class="bar">
+    <input id="q" placeholder="ค้นหาชื่อหรือเบอร์โทร" aria-label="ค้นหา">
+    <select id="st" aria-label="สถานะ"><option value="">ทุกสถานะ</option>${STATUSES.map(s=>`<option>${s}</option>`).join('')}</select></div>
+    <div id="list"><p class="empty">กำลังโหลด…</p></div>`;
+  const load = async () => {
+    let q = sb.from('orders').select('*, customers(name,phone), order_items(sku,quantity)').order('created_at',{ascending:false}).limit(100);
+    if ($('#st').value) q = q.eq('order_status', $('#st').value);
+    const { data, error } = await q;
+    if (error) return $('#list').innerHTML = `<p class="msg err">${esc(error.message)}</p>`;
+    const t = $('#q').value.trim().toLowerCase();
+    const rows = data.filter(o => !t || (o.customers?.name||'').toLowerCase().includes(t) || (o.customers?.phone||'').includes(t));
+    $('#list').innerHTML = rows.length ? rows.map(o => `
+      <article class="row ${cls(o.order_status)}">
+        <div><b>#${o.order_id} ${esc(o.customers?.name)}</b>
+          <div class="sub"><a href="tel:${esc(o.customers?.phone)}">${esc(o.customers?.phone)}</a> • ${new Date(o.created_at).toLocaleString('th-TH',{dateStyle:'short',timeStyle:'short'})}</div></div>
+        <div class="price">${baht(o.total_price)}</div>
+        <div class="sub" style="grid-column:1/-1">${o.order_items.map(i=>`${esc(i.sku.replace('LPG-',''))} กก. × ${i.quantity}`).join(', ')}${o.delivery_address?' — '+esc(o.delivery_address):''}</div>
+        <div class="actions">
+          <select data-id="${o.order_id}" class="stSel" aria-label="สถานะออเดอร์ ${o.order_id}" ${o.order_status==='ยกเลิก'?'disabled':''}>
+            ${STATUSES.map(s=>`<option ${s===o.order_status?'selected':''}>${s}</option>`).join('')}</select>
+          <input data-id="${o.order_id}" class="trk" placeholder="เลขพัสดุ/ทะเบียนรถ" value="${esc(o.tracking_number)}" ${o.order_status==='ยกเลิก'?'disabled':''}>
+          <button class="btn small saveBtn" data-id="${o.order_id}" ${o.order_status==='ยกเลิก'?'disabled':''}>บันทึก</button>
+        </div></article>`).join('') : '<p class="empty">ยังไม่มีออเดอร์ กด “+ ออเดอร์ใหม่” เพื่อเริ่มรับออเดอร์</p>';
+    document.querySelectorAll('.saveBtn').forEach(b => b.onclick = async () => {
+      const id = +b.dataset.id;
+      const status = document.querySelector(`.stSel[data-id="${id}"]`).value;
+      const trk = document.querySelector(`.trk[data-id="${id}"]`).value;
+      if (status==='ยกเลิก' && !confirm('ยกเลิกออเดอร์นี้และคืนสต็อก?')) return;
+      const { error } = await sb.rpc('update_order_status', { p_order_id:id, p_status:status, p_tracking:trk });
+      if (error) return notice(error.message, true);
+      notice(`บันทึกออเดอร์ #${id} แล้ว`); await loadProducts(); load();
+    });
+  };
+  $('#q').oninput = load; $('#st').onchange = load; load();
+}
+
+/* ---------- สต็อก ---------- */
+function viewStock(){
+  $('#view').innerHTML = products.map(p => `
+    <article class="row" style="grid-template-columns:1fr auto">
+      <div><b>${esc(p.product_name)}</b><div class="sub">${esc(p.sku)}</div></div>
+      <div class="qty ${p.stock_quantity<=5?'low':''}">${p.stock_quantity}</div>
+      <div class="actions">
+        <input type="number" min="1" value="10" class="add" data-sku="${esc(p.sku)}" style="width:80px" aria-label="จำนวนที่รับเข้า ${esc(p.sku)}">
+        <button class="btn small addBtn" data-sku="${esc(p.sku)}">รับเข้าสต็อก</button>
+        <input type="number" min="0" value="${p.price}" class="pr" data-sku="${esc(p.sku)}" style="width:100px" aria-label="ราคา ${esc(p.sku)}">
+        <button class="btn small prBtn" data-sku="${esc(p.sku)}">แก้ราคา</button>
+      </div></article>`).join('');
+  document.querySelectorAll('.addBtn').forEach(b => b.onclick = async () => {
+    const p = products.find(x=>x.sku===b.dataset.sku);
+    const n = +document.querySelector(`.add[data-sku="${p.sku}"]`).value;
+    if (!(n>0)) return;
+    const { error } = await sb.from('products').update({ stock_quantity: p.stock_quantity + n }).eq('sku', p.sku);
+    if (error) return notice(error.message, true);
+    notice(`รับเข้า ${p.product_name} ${n} ถัง`); await loadProducts(); viewStock();
+  });
+  document.querySelectorAll('.prBtn').forEach(b => b.onclick = async () => {
+    const sku = b.dataset.sku, v = +document.querySelector(`.pr[data-sku="${sku}"]`).value;
+    const { error } = await sb.from('products').update({ price: v }).eq('sku', sku);
+    if (error) return notice(error.message, true);
+    notice('แก้ราคาแล้ว'); await loadProducts(); viewStock();
+  });
+}
+
+/* ---------- ลูกค้า ---------- */
+async function viewCustomers(){
+  $('#view').innerHTML = `<div class="bar"><input id="cq" placeholder="ค้นหาชื่อหรือเบอร์โทร" aria-label="ค้นหาลูกค้า"></div><div id="list"></div>`;
+  const load = async () => {
+    const t = $('#cq').value.trim();
+    let q = sb.from('customers').select('*').order('created_at',{ascending:false}).limit(100);
+    if (t) q = q.or(`name.ilike.%${t.replace(/[,()%]/g,'')}%,phone.ilike.%${t.replace(/[,()%]/g,'')}%`);
+    const { data, error } = await q;
+    if (error) return $('#list').innerHTML = `<p class="msg err">${esc(error.message)}</p>`;
+    $('#list').innerHTML = data.length ? data.map(c => `
+      <article class="row"><div><b>${esc(c.name)}</b>
+        <div class="sub"><a href="tel:${esc(c.phone)}">${esc(c.phone)}</a>${c.line_id?' • LINE: '+esc(c.line_id):''}${c.facebook_id?' • FB: '+esc(c.facebook_id):''}</div>
+        <div class="sub">${esc(c.address)}</div></div>
+        <button class="btn small" data-phone="${esc(c.phone)}">สั่งแก๊ส</button></article>`).join('')
+      : '<p class="empty">ไม่พบลูกค้า ลูกค้าใหม่จะถูกสร้างเมื่อบันทึกออเดอร์แรก</p>';
+    document.querySelectorAll('[data-phone]').forEach(b => b.onclick = () => openOrder(b.dataset.phone));
+  };
+  $('#cq').oninput = load; load();
+}
+
+/* ---------- ออเดอร์ใหม่ ---------- */
+let found = null;
+$('#newOrderBtn').onclick = () => openOrder('');
+$('#oCancel').onclick = () => $('#orderDlg').close();
+function calc(){
+  const t = [...document.querySelectorAll('.oq')].reduce((s,i)=> s + (+i.value||0) * products.find(p=>p.sku===i.dataset.sku).price, 0);
+  $('#oTotal').textContent = 'รวม ' + baht(t);
+}
+async function lookup(){
+  const ph = digits($('#oPhone').value); found = null; $('#oFound').textContent='';
+  if (ph.length < 9) return;
+  const { data } = await sb.from('customers').select('*').eq('phone', ph).maybeSingle();
+  if (data) {
+    found = data; $('#oName').value = data.name; if (!$('#oAddr').value) $('#oAddr').value = data.address || '';
+    const { count } = await sb.from('orders').select('*',{count:'exact',head:true}).eq('customer_id', data.id);
+    $('#oFound').textContent = `ลูกค้าเดิม สั่งมาแล้ว ${count} ครั้ง`;
+  } else $('#oFound').textContent = 'ลูกค้าใหม่ จะบันทึกชื่อและที่อยู่ให้อัตโนมัติ';
+}
+function openOrder(phone){
+  found = null; $('#oErr').classList.add('hidden');
+  $('#oPhone').value = phone; $('#oName').value=''; $('#oAddr').value=''; $('#oFound').textContent='';
+  $('#oItems').innerHTML = products.filter(p=>p.is_active).map(p => `
+    <div class="item"><div>${esc(p.product_name)}<div class="sub">${baht(p.price)} • เหลือ ${p.stock_quantity}</div></div>
+    <input type="number" class="oq" min="0" max="${p.stock_quantity}" value="0" data-sku="${esc(p.sku)}" aria-label="จำนวน ${esc(p.product_name)}"></div>`).join('');
+  document.querySelectorAll('.oq').forEach(i => i.oninput = calc); calc();
+  $('#orderDlg').showModal(); if (phone) lookup(); else $('#oPhone').focus();
+}
+$('#oPhone').oninput = lookup;
+$('#oSave').onclick = async () => {
+  const err = m => { const e=$('#oErr'); e.textContent=m; e.classList.remove('hidden'); };
+  const ph = digits($('#oPhone').value), name = $('#oName').value.trim(), addr = $('#oAddr').value.trim();
+  const items = [...document.querySelectorAll('.oq')].filter(i=>+i.value>0).map(i=>({sku:i.dataset.sku, quantity:+i.value}));
+  if (!/^[0-9]{9,10}$/.test(ph)) return err('กรอกเบอร์โทร 9–10 หลัก');
+  if (!name) return err('กรอกชื่อลูกค้า');
+  if (!addr) return err('กรอกที่อยู่จัดส่ง');
+  if (!items.length) return err('เลือกจำนวนถังอย่างน้อย 1 รายการ');
+  let cid = found?.id;
+  if (!cid) {
+    const { data, error } = await sb.from('customers').insert({ name, phone: ph, address: addr }).select().single();
+    if (error) return err(error.message); cid = data.id;
+  } else await sb.from('customers').update({ name, address: addr }).eq('id', cid);
+  const { data: oid, error } = await sb.rpc('create_order', { p_customer_id: cid, p_items: items, p_address: addr, p_source: $('#oSrc').value });
+  if (error) return err(error.message);
+  $('#orderDlg').close(); notice(`บันทึกออเดอร์ #${oid} แล้ว`);
+  await loadProducts(); if (history.replaceState) history.replaceState(null,'',location.pathname);
+  render();
+};
+
+init();
+</script>
+</body>
+</html>
