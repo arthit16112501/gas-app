@@ -44,10 +44,10 @@ table{width:100%;border-collapse:collapse}th,td{text-align:left;padding:7px 6px;
 #labels{display:flex;flex-wrap:wrap;gap:8px;padding:0 14px 20px;max-width:900px;margin:0 auto}
 #labels:empty{display:none}
 .label{background:#fff;color:#000;border:1px dashed #999;display:flex;gap:2mm;padding:1.5mm;align-items:center;overflow:hidden}
-.label svg{height:100%;aspect-ratio:1;flex:none;fill:#000;background:#fff}
+.label svg{height:100%;max-height:22mm;aspect-ratio:1;flex:none;fill:#000;background:#fff}
 .label .t{display:flex;flex-direction:column;min-width:0}
 .label .n{font-weight:700;font-size:3.2mm;line-height:1.15}
-.label .c{font:700 3.6mm/1.2 ui-monospace,monospace}
+.label .c{font:700 3mm/1.2 ui-monospace,monospace;word-break:break-all}
 .label .d{font-size:2.6mm}
 @media print{body{background:#fff}body>*:not(#printArea){display:none!important}#labels{display:block;padding:0}.label{border:0;break-after:page}}
 </style>
@@ -83,7 +83,7 @@ const EVENT_TH = { registered:'รับเข้าโกดัง', loaded:'�
 let sb, isStaff = false, tab = '', cam = null, camTimer = null;
 const cur = { id: null, mode: 'load', last: '', lastAt: 0 };
 
-function notice(t, err){ $('#notice').innerHTML = t ? `<div class="msg ${err?'err':''}" role="status">${esc(t)}</div>` : ''; if (t) setTimeout(() => $('#notice').innerHTML = '', 5000); }
+function notice(t, err){ $('#notice').innerHTML = t ? `<div class="msg ${err?'err':''}" role="status">${esc(t)}</div>` : ''; if (t) { window.scrollTo({ top: 0, behavior: 'smooth' }); setTimeout(() => $('#notice').innerHTML = '', 8000); } }
 const fmt = d => new Date(d).toLocaleString('th-TH', { dateStyle:'short', timeStyle:'short' });
 
 async function init(){
@@ -261,11 +261,14 @@ function stopCam(){ clearInterval(camTimer); cam?.getTracks().forEach(t => t.sto
 /* ---------- ตรวจสอบ/ติดตามถัง ---------- */
 async function viewTrace(){
   const { data:rec } = await sb.from('v_stock_reconcile').select('*').order('sku');
+  const { data:recent } = await sb.from('cylinders').select('code,status,filled_at,batch_no,products(product_name)').order('filled_at', { ascending:false }).limit(20);
   $('#view').innerHTML = `<div class="card"><label for="tCode">ค้นหารหัสถัง</label><input id="tCode" style="text-transform:uppercase" placeholder="GC...">
     <p><button class="btn primary" id="tGo">ค้นหา</button></p><div id="tOut"></div></div>
     <h2>เทียบสต็อกกับถังที่สแกนเข้าโกดัง</h2><div class="card"><table><tr><th>สินค้า</th><th>สต็อกในระบบ</th><th>ถังในโกดัง (สแกน)</th><th>ส่วนต่าง</th></tr>
     ${(rec||[]).map(r => `<tr><td>${esc(r.product_name)}</td><td>${r.stock_quantity}</td><td>${r.cylinders_in_stock}</td><td>${r.cylinders_in_stock - r.stock_quantity}</td></tr>`).join('')}</table>
-    <p class="sub">ส่วนต่างควรเท่ากับจำนวนที่จองไว้ให้ออเดอร์ที่ยังไม่ได้โหลดขึ้นรถ ถ้าผิดปกติให้ตรวจว่ามีการแก้ตัวเลขสต็อกด้วยมือหรือถังหาย</p></div>`;
+    <p class="sub">ส่วนต่างควรเท่ากับจำนวนที่จองไว้ให้ออเดอร์ที่ยังไม่ได้โหลดขึ้นรถ ถ้าผิดปกติให้ตรวจว่ามีการแก้ตัวเลขสต็อกด้วยมือหรือถังหาย</p></div>
+    <h2>ถังที่รับเข้าล่าสุด (กดรหัสเพื่อดูประวัติ/พิมพ์ซ้ำ)</h2><div class="card"><table><tr><th>รหัส</th><th>ขนาด</th><th>สถานะ</th><th>ล็อต</th></tr>
+    ${(recent||[]).map(c => `<tr><td><button class="btn small" data-c="${esc(c.code)}" onclick="document.getElementById('tCode').value=this.dataset.c;document.getElementById('tGo').click();window.scrollTo(0,0)">${esc(c.code)}</button></td><td>${esc(c.products?.product_name)}</td><td>${STATUS_TH[c.status]}</td><td>${esc(c.batch_no||'')}</td></tr>`).join('') || '<tr><td colspan="4" class="sub">ยังไม่มีถัง</td></tr>'}</table></div>`;
   $('#tGo').onclick = async () => {
     const code = $('#tCode').value.trim().toUpperCase(); if (!code) return;
     const [{ data:c }, { data:ev }] = await Promise.all([
