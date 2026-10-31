@@ -1,0 +1,299 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>โกดังและสแกนถังแก๊ส</title>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Thai:wght@400;500;700&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcode-generator/1.4.4/qrcode.min.js"></script>
+<style id="pageStyle"></style>
+<style>
+:root{--bg:#EEF1F0;--surface:#fff;--ink:#1B2A33;--muted:#5C6B73;--line:#D5DCDA;--steel:#1F4E5F;--steel-ink:#fff;--brass:#B7832F;--ok:#2C7A55;--okbg:#DDF0E5;--bad:#B8391A;--badbg:#FBE3DC;color-scheme:light}
+@media (prefers-color-scheme:dark){:root{--bg:#10181C;--surface:#18232A;--ink:#E7EEF0;--muted:#97A7AE;--line:#2B3A42;--steel:#5FB0C8;--steel-ink:#0B1519;--brass:#D9A650;--ok:#62C493;--okbg:#17372A;--bad:#F08A66;--badbg:#3E2018;color-scheme:dark}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.5 "IBM Plex Sans Thai",system-ui,sans-serif;padding:env(safe-area-inset-top) 0 env(safe-area-inset-bottom)}
+button,input,select{font:inherit;color:inherit}
+:focus-visible{outline:3px solid var(--brass);outline-offset:2px}
+.wrap{max-width:900px;margin:0 auto;padding:12px 14px 80px}
+header{display:flex;justify-content:space-between;align-items:center;gap:8px;padding:8px 0}
+h1{font-size:1.1rem;margin:0}h2{font-size:1rem;margin:18px 0 8px}
+nav{display:flex;gap:4px;background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:4px;margin:6px 0 14px}
+nav button{flex:1;border:0;background:none;padding:10px 4px;border-radius:7px;cursor:pointer;color:var(--muted);font-weight:500}
+nav button[aria-selected=true]{background:var(--steel);color:var(--steel-ink)}
+.btn{border:1px solid var(--line);background:var(--surface);padding:9px 14px;border-radius:8px;cursor:pointer;font-weight:500}
+.btn.primary{background:var(--steel);color:var(--steel-ink);border-color:var(--steel)}
+.btn.small{padding:5px 10px;font-size:.9rem}
+input,select{width:100%;padding:10px;border:1px solid var(--line);border-radius:8px;background:var(--surface)}
+label{display:block;font-size:.9rem;color:var(--muted);margin:10px 0 4px}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:12px 14px;margin-bottom:10px}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:10px}
+.sub{color:var(--muted);font-size:.9rem}
+table{width:100%;border-collapse:collapse}th,td{text-align:left;padding:7px 6px;border-bottom:1px solid var(--line);font-variant-numeric:tabular-nums}
+.seg{display:flex;gap:6px;margin:10px 0}.seg button{flex:1;padding:12px 4px;border:1px solid var(--line);border-radius:8px;background:var(--surface);cursor:pointer;font-weight:500}
+.seg button[aria-pressed=true]{background:var(--steel);color:var(--steel-ink);border-color:var(--steel)}
+#banner{margin:12px 0;padding:18px 14px;border-radius:12px;font-size:1.15rem;font-weight:700;text-align:center;border:2px solid var(--line)}
+#banner.ok{background:var(--okbg);color:var(--ok);border-color:var(--ok)}#banner.bad{background:var(--badbg);color:var(--bad);border-color:var(--bad)}
+#scanIn{font-size:1.2rem;padding:14px;font-family:ui-monospace,monospace;text-transform:uppercase}
+#cam{width:100%;max-height:260px;border-radius:10px;background:#000;margin:8px 0}
+.msg{padding:10px 12px;border-radius:8px;margin:8px 0;background:var(--surface);border:1px solid var(--line)}.msg.err{border-color:var(--bad);color:var(--bad)}
+.hidden{display:none!important}
+#login{max-width:360px;margin:12vh auto;padding:0 16px}
+.done{color:var(--ok);font-weight:700}
+/* สติกเกอร์ */
+#labels{display:flex;flex-wrap:wrap;gap:8px;padding:0 14px 20px;max-width:900px;margin:0 auto}
+#labels:empty{display:none}
+.label{background:#fff;color:#000;border:1px dashed #999;display:flex;gap:2mm;padding:1.5mm;align-items:center;overflow:hidden}
+.label svg{height:100%;max-height:22mm;aspect-ratio:1;flex:none;fill:#000;background:#fff}
+.label .t{display:flex;flex-direction:column;min-width:0}
+.label .n{font-weight:700;font-size:3.2mm;line-height:1.15}
+.label .c{font:700 3mm/1.2 ui-monospace,monospace;word-break:break-all}
+.label .d{font-size:2.6mm}
+@media print{body{background:#fff}body>*:not(#printArea){display:none!important}#labels{display:block;padding:0}.label{border:0;break-after:page}}
+</style>
+</head>
+<body>
+
+<section id="login" class="hidden">
+  <h1>เข้าสู่ระบบ</h1>
+  <label for="em">อีเมล</label><input id="em" type="email" autocomplete="username">
+  <label for="pw">รหัสผ่าน</label><input id="pw" type="password" autocomplete="current-password">
+  <p id="loginMsg" class="msg err hidden"></p>
+  <p><button class="btn primary" id="loginBtn" style="width:100%">เข้าสู่ระบบ</button></p>
+</section>
+
+<main id="app" class="wrap hidden">
+  <header><h1>โกดังและสแกนถังแก๊ส</h1><button class="btn small" id="logout">ออกจากระบบ</button></header>
+  <nav role="tablist" id="tabs"></nav>
+  <div id="notice"></div>
+  <div id="view"></div>
+</main>
+<div id="printArea"><div id="labels"></div></div>
+
+<script>
+/* ===== ตั้งค่า: ใช้ค่าเดียวกับ index.html ===== */
+const SUPABASE_URL = 'https://mhxclzsmikdudynznmdr.supabase.co';
+const SUPABASE_ANON_KEY = 'sb_publishable_WWemd8D9a_Slx4jSv-YLqQ_OZZW-l9-';
+/* ============================================== */
+
+const $ = s => document.querySelector(s);
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const STATUS_TH = { in_stock:'อยู่ในโกดัง', loaded:'โหลดขึ้นรถแล้ว', delivered:'ส่งมอบแล้ว', void:'ยกเลิก' };
+const EVENT_TH = { registered:'รับเข้าโกดัง', loaded:'โหลดขึ้นรถ', delivered:'ส่งมอบ', returned:'ตีกลับ', void:'ยกเลิกถัง', rejected:'สแกนไม่ผ่าน' };
+let sb, isStaff = false, tab = '', cam = null, camTimer = null;
+const cur = { id: null, mode: 'load', last: '', lastAt: 0 };
+
+function notice(t, err){ $('#notice').innerHTML = t ? `<div class="msg ${err?'err':''}" role="status">${esc(t)}</div>` : ''; if (t) { window.scrollTo({ top: 0, behavior: 'smooth' }); setTimeout(() => $('#notice').innerHTML = '', 8000); } }
+const fmt = d => new Date(d).toLocaleString('th-TH', { dateStyle:'short', timeStyle:'short' });
+
+async function init(){
+  if (SUPABASE_URL.includes('YOUR-PROJECT')) { $('#login').classList.remove('hidden'); $('#login').innerHTML = '<h1>ยังไม่ได้ตั้งค่า Supabase</h1><p>ใส่ SUPABASE_URL และ SUPABASE_ANON_KEY ที่ส่วนต้นของ &lt;script&gt;</p>'; return; }
+  sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+  const { data:{ session } } = await sb.auth.getSession();
+  session ? start(session) : $('#login').classList.remove('hidden');
+}
+$('#loginBtn').onclick = async () => {
+  const { data, error } = await sb.auth.signInWithPassword({ email:$('#em').value, password:$('#pw').value });
+  if (error) { const m = $('#loginMsg'); m.textContent = 'อีเมลหรือรหัสผ่านไม่ถูกต้อง'; m.classList.remove('hidden'); return; }
+  $('#login').classList.add('hidden'); start(data.session);
+};
+$('#logout').onclick = async () => { await sb.auth.signOut(); location.reload(); };
+
+function start(session){
+  const role = session.user.app_metadata?.role || '';
+  isStaff = role === 'staff' || role === 'admin';
+  $('#app').classList.remove('hidden');
+  if (!isStaff && role !== 'carrier') { $('#view').innerHTML = '<p class="msg err">บัญชีนี้ยังไม่ได้กำหนดสิทธิ์ ติดต่อผู้ดูแลระบบ</p>'; return; }
+  const tabs = isStaff ? [['receive','รับถังเข้า'],['shipments','รอบส่ง'],['scan','สแกน'],['trace','ตรวจสอบ']] : [['scan','สแกน']];
+  $('#tabs').innerHTML = tabs.map(([k,v]) => `<button role="tab" data-t="${k}" aria-selected="false">${v}</button>`).join('');
+  document.querySelectorAll('#tabs button').forEach(b => b.onclick = () => go(b.dataset.t));
+  go(tabs[0][0]);
+}
+function go(t){
+  stopCam(); tab = t; $('#labels').innerHTML = '';
+  document.querySelectorAll('#tabs button').forEach(b => b.setAttribute('aria-selected', b.dataset.t === t));
+  ({ receive:viewReceive, shipments:viewShipments, scan:viewScan, trace:viewTrace })[t]();
+}
+
+/* ---------- QR และสติกเกอร์ ---------- */
+function qrSvg(text){
+  if (typeof qrcode === 'undefined') return '';
+  const q = qrcode(0, 'M'); q.addData(text); q.make();
+  const n = q.getModuleCount(); let d = '';
+  for (let r = 0; r < n; r++) for (let c = 0; c < n; c++) if (q.isDark(r, c)) d += `M${c},${r}h1v1h-1z`;
+  return `<svg viewBox="-2 -2 ${n+4} ${n+4}" shape-rendering="crispEdges"><path d="${d}"/></svg>`;
+}
+function showLabels(items, w = 50, h = 30){
+  if (typeof qrcode === 'undefined') return notice('โหลดไลบรารี QR ไม่สำเร็จ ตรวจอินเทอร์เน็ตหรือดาวน์โหลดไฟล์มาไว้เอง', true);
+  $('#pageStyle').textContent = `@page{size:${w}mm ${h}mm;margin:0}`;
+  $('#labels').innerHTML = items.map(i => `<div class="label" style="width:${w}mm;height:${h}mm">${qrSvg(i.code)}
+    <div class="t"><span class="n">${esc(i.name)}</span><span class="c">${esc(i.code)}</span><span class="d">เติม ${esc(i.date)}</span></div></div>`).join('');
+}
+
+/* ---------- รับถังเข้า + พิมพ์สติกเกอร์ ---------- */
+async function viewReceive(){
+  const { data:products } = await sb.from('products').select('sku,product_name').eq('is_active', true).order('price');
+  $('#view').innerHTML = `<div class="card">
+    <p class="sub">ใช้หลังเติมแก๊สเต็มและนำถังเข้าโกดังแล้ว ระบบสร้างรหัสให้ทุกใบ เพิ่มสต็อก และพร้อมพิมพ์สติกเกอร์</p>
+    <label for="rSku">ขนาดถัง</label><select id="rSku">${(products||[]).map(p => `<option value="${esc(p.sku)}">${esc(p.product_name)}</option>`).join('')}</select>
+    <div class="grid"><div><label for="rQty">จำนวน (ใบ)</label><input id="rQty" type="number" min="1" max="500" value="10"></div>
+    <div><label for="rBatch">เลขล็อต/วันที่เติม</label><input id="rBatch" placeholder="เช่น 2026-10-27-A"></div></div>
+    <div class="grid"><div><label for="rW">กว้างสติกเกอร์ (มม.)</label><input id="rW" type="number" value="50"></div>
+    <div><label for="rH">สูงสติกเกอร์ (มม.)</label><input id="rH" type="number" value="30"></div></div>
+    <p><button class="btn primary" id="rGo">สร้างรหัสและรับเข้าสต็อก</button> <button class="btn hidden" id="rPrint">พิมพ์สติกเกอร์</button></p></div>`;
+  $('#rGo').onclick = async () => {
+    const sku = $('#rSku').value, qty = +$('#rQty').value;
+    if (!confirm(`รับเข้า ${qty} ใบ และเพิ่มสต็อกทันที ยืนยัน?`)) return;
+    $('#rGo').disabled = true;
+    const { data, error } = await sb.rpc('register_cylinders', { p_sku: sku, p_qty: qty, p_batch: $('#rBatch').value || null });
+    $('#rGo').disabled = false;
+    if (error) return notice(error.message, true);
+    const name = $('#rSku').selectedOptions[0].textContent, date = new Date().toLocaleDateString('th-TH');
+    showLabels(data.map(r => ({ code: r.out_code, name, date })), +$('#rW').value || 50, +$('#rH').value || 30);
+    $('#rPrint').classList.remove('hidden'); notice(`รับเข้า ${data.length} ใบแล้ว กดพิมพ์สติกเกอร์ได้เลย`);
+  };
+  $('#rPrint').onclick = () => window.print();
+}
+
+/* ---------- รอบส่ง ---------- */
+async function viewShipments(){
+  const [{ data:dealers }, { data:products }, { data:open, error }, { data:carriers }] = await Promise.all([
+    sb.from('dealers').select('id,name').eq('is_active', true).order('name'),
+    sb.from('products').select('sku,product_name').eq('is_active', true).order('price'),
+    sb.rpc('list_open_shipments'),
+    sb.from('profiles').select('user_id,display_name,role,dealer_id').in('role', ['carrier','dealer_driver']).eq('is_active', true).order('display_name')]);
+  if (error) return notice(error.message, true);
+  $('#view').innerHTML = `
+    <details class="card"><summary><b>+ เพิ่มผู้จำหน่ายรายย่อย</b></summary>
+      <label for="dN">ชื่อร้าน</label><input id="dN"><div class="grid"><div><label for="dP">เบอร์โทร</label><input id="dP" inputmode="tel"></div>
+      <div><label for="dA">ที่อยู่</label><input id="dA"></div></div><p><button class="btn small" id="dSave">บันทึก</button></p></details>
+    <div class="card"><b>สร้างรอบส่งใหม่</b>
+      <label for="sD">ส่งให้ผู้จำหน่าย</label><select id="sD"><option value="">— เลือก —</option>${(dealers||[]).map(d => `<option value="${d.id}">${esc(d.name)}</option>`).join('')}</select>
+      <label for="sO">หรือส่งตามออเดอร์ลูกค้า (เลขออเดอร์)</label><input id="sO" type="number" min="1" placeholder="เว้นว่างถ้าเลือกผู้จำหน่าย">
+      <label for="sU">ผู้ขนส่งที่รับผิดชอบ (ต้องเลือก ไม่เช่นนั้นผู้ขนส่งจะมองไม่เห็นรอบนี้)</label><select id="sU"><option value="">— เลือก —</option>${(carriers||[]).map(c => `<option value="${c.user_id}">${esc(c.display_name)}${c.dealer_id ? ' (คนของร้านผู้จำหน่าย)' : ''}</option>`).join('')}</select>
+      <label for="sC">ทะเบียนรถ/หมายเหตุ (ไม่บังคับ)</label><input id="sC">
+      <div id="sL"><label>จำนวนที่ส่ง (กรณีส่งให้ผู้จำหน่าย)</label><div class="grid">${(products||[]).map(p => `<div><span class="sub">${esc(p.product_name)}</span><input type="number" min="0" value="0" data-sku="${esc(p.sku)}" class="sq"></div>`).join('')}</div></div>
+      <p><button class="btn primary" id="sGo">สร้างรอบส่ง</button></p></div>
+    <h2>รอบส่งที่ยังไม่ปิด</h2>${(open||[]).map(s => `<div class="card"><b>#${s.shipment_id} ${esc(s.dealer_name || 'ออเดอร์ #' + s.order_id)}</b>
+      <div class="sub">${esc([s.carrier_user_name, s.carrier_name].filter(Boolean).join(' / ') || 'ยังไม่ได้มอบหมายผู้ขนส่ง')} • ${esc(s.status)} • ส่งมอบแล้ว ${s.delivered}/${s.expected}</div>
+      ${s.status === 'draft' ? `<p><button class="btn small cx" data-id="${s.shipment_id}">ยกเลิกรอบ</button></p>` : ''}</div>`).join('') || '<p class="sub">ไม่มีรอบส่งที่ค้างอยู่</p>'}`;
+  $('#dSave').onclick = async () => {
+    const name = $('#dN').value.trim(); if (!name) return notice('กรอกชื่อร้าน', true);
+    const { error } = await sb.from('dealers').insert({ name, phone: $('#dP').value || null, address: $('#dA').value || null });
+    error ? notice(error.message, true) : (notice('เพิ่มผู้จำหน่ายแล้ว'), viewShipments());
+  };
+  $('#sGo').onclick = async () => {
+    const dealer = $('#sD').value || null, order = +$('#sO').value || null;
+    const lines = [...document.querySelectorAll('.sq')].filter(i => +i.value > 0).map(i => ({ sku: i.dataset.sku, quantity: +i.value }));
+    if (!dealer === !order) return notice('เลือกผู้จำหน่ายหรือกรอกเลขออเดอร์ อย่างใดอย่างหนึ่ง', true);
+    if (!$('#sU').value && !confirm('ยังไม่ได้เลือกผู้ขนส่งที่รับผิดชอบ ผู้ขนส่งจะมองไม่เห็นรอบนี้ ต้องการสร้างต่อไหม?')) return;
+    const { data, error } = await sb.rpc('create_shipment', { p_dealer: dealer, p_order: order, p_carrier: $('#sC').value || null, p_lines: order ? null : lines, p_carrier_user: $('#sU').value || null });
+    error ? notice(error.message, true) : (notice(`สร้างรอบส่ง #${data} แล้ว`), viewShipments());
+  };
+  document.querySelectorAll('.cx').forEach(b => b.onclick = async () => {
+    if (!confirm('ยกเลิกรอบส่งนี้ (สต็อกจะถูกคืน)?')) return;
+    const { error } = await sb.rpc('cancel_shipment', { p_id: +b.dataset.id });
+    error ? notice(error.message, true) : (notice('ยกเลิกแล้ว'), viewShipments());
+  });
+}
+
+/* ---------- สแกน ---------- */
+function beep(ok){ try { const a = new AudioContext(), o = a.createOscillator(); o.frequency.value = ok ? 880 : 220; o.connect(a.destination); o.start(); o.stop(a.currentTime + (ok ? .12 : .4)); } catch {} navigator.vibrate?.(ok ? 60 : [200,80,200]); }
+function banner(ok, text){ const b = $('#banner'); b.className = ok ? 'ok' : 'bad'; b.textContent = (ok ? '✓ ' : '✗ ') + text; beep(ok); }
+
+async function viewScan(){
+  const { data:open, error } = await sb.rpc('list_open_shipments');
+  if (error) return notice(error.message, true);
+  $('#view').innerHTML = `<label for="shSel">รอบส่ง</label>
+    <select id="shSel"><option value="">— เลือกรอบส่ง —</option>${(open||[]).map(s => `<option value="${s.shipment_id}" ${s.shipment_id === cur.id ? 'selected' : ''}>#${s.shipment_id} ${esc(s.dealer_name || 'ออเดอร์ #' + s.order_id)} • ${esc(s.carrier_user_name || s.carrier_name || '-')}</option>`).join('')}</select>
+    <div class="seg" role="group" aria-label="โหมดสแกน">
+      <button data-m="load" aria-pressed="${cur.mode === 'load'}">โหลดขึ้นรถ</button>
+      <button data-m="deliver" aria-pressed="${cur.mode === 'deliver'}">ส่งมอบ</button>
+      <button data-m="return" aria-pressed="${cur.mode === 'return'}">ตีกลับ</button></div>
+    <label for="scanIn">สแกนรหัสถัง (เครื่องสแกนจะพิมพ์รหัสและกด Enter เอง)</label>
+    <input id="scanIn" autocomplete="off" autocapitalize="characters" inputmode="text">
+    <p><button class="btn small hidden" id="camBtn">เปิดกล้องสแกน</button></p>
+    <video id="cam" class="hidden" playsinline muted></video>
+    <div id="banner" role="status" aria-live="assertive">รอสแกน…</div>
+    <div id="prog"></div>`;
+  if ('BarcodeDetector' in window) $('#camBtn').classList.remove('hidden');
+  $('#camBtn').onclick = toggleCam;
+  $('#shSel').onchange = () => { cur.id = +$('#shSel').value || null; loadProg(); $('#scanIn').focus(); };
+  document.querySelectorAll('.seg button').forEach(b => b.onclick = () => { cur.mode = b.dataset.m; document.querySelectorAll('.seg button').forEach(x => x.setAttribute('aria-pressed', x === b)); $('#scanIn').focus(); });
+  $('#scanIn').onkeydown = e => { if (e.key === 'Enter') { const v = e.target.value; e.target.value = ''; doScan(v); } };
+  loadProg(); $('#scanIn').focus();
+}
+async function doScan(raw){
+  const code = raw.trim().toUpperCase(); if (!code) return;
+  if (!cur.id) return banner(false, 'เลือกรอบส่งก่อน');
+  if (code === cur.last && Date.now() - cur.lastAt < 1500) return; // กันสแกนรัว
+  cur.last = code; cur.lastAt = Date.now();
+  const { data, error } = await sb.rpc('scan_cylinder', { p_code: code, p_action: cur.mode, p_shipment_id: cur.id });
+  if (error) return banner(false, error.message);
+  data.ok ? banner(true, `${data.product_name} • ${data.code} (${cur.mode === 'deliver' ? data.delivered : data.loaded}/${data.expected})`)
+          : banner(false, `${data.reason} [${data.code}]`);
+  loadProg();
+}
+async function loadProg(){
+  const box = $('#prog'); if (!box) return;
+  if (!cur.id) { box.innerHTML = ''; return; }
+  const { data:s, error } = await sb.rpc('get_shipment', { p_id: cur.id });
+  if (error) { box.innerHTML = `<p class="msg err">${esc(error.message)}</p>`; return; }
+  box.innerHTML = `<div class="card"><b>${esc(s.dealer_name || 'ออเดอร์ #' + s.order_id)}</b><div class="sub">${esc(s.dealer_address || '')}</div>
+    <table><tr><th>ขนาด</th><th>ต้องส่ง</th><th>โหลดแล้ว</th><th>ส่งมอบแล้ว</th></tr>
+    ${s.lines.map(l => `<tr><td>${esc(l.product_name)}</td><td>${l.expected}</td><td class="${l.loaded >= l.expected ? 'done' : ''}">${l.loaded}</td><td class="${l.delivered >= l.expected ? 'done' : ''}">${l.delivered}</td></tr>`).join('')}</table>
+    <p><button class="btn primary" id="closeSh">ปิดรอบส่งและตรวจความครบถ้วน</button></p></div>`;
+  $('#closeSh').onclick = async () => {
+    const { data, error } = await sb.rpc('complete_shipment', { p_shipment_id: cur.id });
+    if (error) return notice(error.message, true);
+    if (data.complete) { notice('ส่งมอบครบถ้วน ปิดรอบส่งแล้ว'); cur.id = null; viewScan(); }
+    else notice(`ยังไม่ครบ: ${data.short_lines} ขนาดที่ส่งมอบไม่ครบ, ถังที่ยังอยู่บนรถ ${data.still_loaded.length} ใบ`, true);
+  };
+}
+async function toggleCam(){
+  if (cam) return stopCam();
+  try {
+    const det = new BarcodeDetector({ formats: ['qr_code', 'code_128'] }), v = $('#cam');
+    cam = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
+    v.srcObject = cam; v.classList.remove('hidden'); await v.play();
+    camTimer = setInterval(async () => { try { const r = await det.detect(v); if (r[0]) doScan(r[0].rawValue); } catch {} }, 300);
+  } catch { notice('เปิดกล้องไม่ได้ ใช้เครื่องสแกนหรือพิมพ์รหัสแทน', true); }
+}
+function stopCam(){ clearInterval(camTimer); cam?.getTracks().forEach(t => t.stop()); cam = null; $('#cam')?.classList.add('hidden'); }
+
+/* ---------- ตรวจสอบ/ติดตามถัง ---------- */
+async function viewTrace(){
+  const { data:rec } = await sb.from('v_stock_reconcile').select('*').order('sku');
+  const { data:recent } = await sb.from('cylinders').select('code,status,filled_at,batch_no,products(product_name)').order('filled_at', { ascending:false }).limit(20);
+  $('#view').innerHTML = `<div class="card"><label for="tCode">ค้นหารหัสถัง</label><input id="tCode" style="text-transform:uppercase" placeholder="GC...">
+    <p><button class="btn primary" id="tGo">ค้นหา</button></p><div id="tOut"></div></div>
+    <h2>เทียบสต็อกกับถังที่สแกนเข้าโกดัง</h2><div class="card"><table><tr><th>สินค้า</th><th>สต็อกในระบบ</th><th>ถังในโกดัง (สแกน)</th><th>ส่วนต่าง</th></tr>
+    ${(rec||[]).map(r => `<tr><td>${esc(r.product_name)}</td><td>${r.stock_quantity}</td><td>${r.cylinders_in_stock}</td><td>${r.cylinders_in_stock - r.stock_quantity}</td></tr>`).join('')}</table>
+    <p class="sub">ส่วนต่างควรเท่ากับจำนวนที่จองไว้ให้ออเดอร์ที่ยังไม่ได้โหลดขึ้นรถ ถ้าผิดปกติให้ตรวจว่ามีการแก้ตัวเลขสต็อกด้วยมือหรือถังหาย</p></div>
+    <h2>ถังที่รับเข้าล่าสุด (กดรหัสเพื่อดูประวัติ/พิมพ์ซ้ำ)</h2><div class="card"><table><tr><th>รหัส</th><th>ขนาด</th><th>สถานะ</th><th>ล็อต</th></tr>
+    ${(recent||[]).map(c => `<tr><td><button class="btn small" data-c="${esc(c.code)}" onclick="document.getElementById('tCode').value=this.dataset.c;document.getElementById('tGo').click();window.scrollTo(0,0)">${esc(c.code)}</button></td><td>${esc(c.products?.product_name)}</td><td>${STATUS_TH[c.status]}</td><td>${esc(c.batch_no||'')}</td></tr>`).join('') || '<tr><td colspan="4" class="sub">ยังไม่มีถัง</td></tr>'}</table></div>`;
+  $('#tGo').onclick = async () => {
+    const code = $('#tCode').value.trim().toUpperCase(); if (!code) return;
+    const [{ data:c }, { data:ev }] = await Promise.all([
+      sb.from('cylinders').select('*, products(product_name)').eq('code', code).maybeSingle(),
+      sb.from('cylinder_events').select('*').eq('code', code).order('created_at')]);
+    $('#tOut').innerHTML = !c && !(ev && ev.length) ? '<p class="msg err">ไม่พบรหัสนี้ในระบบ</p>' : `
+      ${c ? `<p><b>${esc(c.products?.product_name)}</b> • ${STATUS_TH[c.status]} • เติม ${fmt(c.filled_at)} ${c.batch_no ? '• ล็อต ' + esc(c.batch_no) : ''}</p>
+        <p><button class="btn small" id="reprint">พิมพ์สติกเกอร์ซ้ำ</button> ${c.status === 'in_stock' ? '<button class="btn small" id="voidBtn">ยกเลิกถังนี้</button>' : ''}</p>` : ''}
+      <table>${(ev || []).map(e => `<tr><td>${fmt(e.created_at)}</td><td>${EVENT_TH[e.event]}</td><td>${e.shipment_id ? 'รอบ #' + e.shipment_id : ''}</td><td class="sub">${esc(e.actor_email || '')} ${esc(e.detail || '')}</td></tr>`).join('')}</table>`;
+    $('#reprint')?.addEventListener('click', () => {
+      showLabels([{ code: c.code, name: c.products?.product_name, date: new Date(c.filled_at).toLocaleDateString('th-TH') }]);
+      setTimeout(() => window.print(), 150);
+    });
+    $('#voidBtn')?.addEventListener('click', async () => {
+      const reason = prompt('เหตุผลที่ยกเลิก (เช่น สติกเกอร์ผิด, ถังชำรุด)'); if (reason === null) return;
+      const { error } = await sb.rpc('void_cylinder', { p_code: c.code, p_reason: reason });
+      error ? notice(error.message, true) : (notice('ยกเลิกถังแล้ว หักสต็อก 1'), viewTrace());
+    });
+  };
+}
+
+init();
+</script>
+</body>
+</html>
