@@ -157,10 +157,11 @@ async function viewReceive(){
 
 /* ---------- รอบส่ง ---------- */
 async function viewShipments(){
-  const [{ data:dealers }, { data:products }, { data:open, error }] = await Promise.all([
+  const [{ data:dealers }, { data:products }, { data:open, error }, { data:carriers }] = await Promise.all([
     sb.from('dealers').select('id,name').eq('is_active', true).order('name'),
     sb.from('products').select('sku,product_name').eq('is_active', true).order('price'),
-    sb.rpc('list_open_shipments')]);
+    sb.rpc('list_open_shipments'),
+    sb.from('profiles').select('user_id,display_name,role,dealer_id').in('role', ['carrier','dealer_driver']).eq('is_active', true).order('display_name')]);
   if (error) return notice(error.message, true);
   $('#view').innerHTML = `
     <details class="card"><summary><b>+ เพิ่มผู้จำหน่ายรายย่อย</b></summary>
@@ -169,11 +170,12 @@ async function viewShipments(){
     <div class="card"><b>สร้างรอบส่งใหม่</b>
       <label for="sD">ส่งให้ผู้จำหน่าย</label><select id="sD"><option value="">— เลือก —</option>${(dealers||[]).map(d => `<option value="${d.id}">${esc(d.name)}</option>`).join('')}</select>
       <label for="sO">หรือส่งตามออเดอร์ลูกค้า (เลขออเดอร์)</label><input id="sO" type="number" min="1" placeholder="เว้นว่างถ้าเลือกผู้จำหน่าย">
-      <label for="sC">ผู้ขนส่ง/ทะเบียนรถ</label><input id="sC">
+      <label for="sU">ผู้ขนส่งที่รับผิดชอบ (ต้องเลือก ไม่เช่นนั้นผู้ขนส่งจะมองไม่เห็นรอบนี้)</label><select id="sU"><option value="">— เลือก —</option>${(carriers||[]).map(c => `<option value="${c.user_id}">${esc(c.display_name)}${c.dealer_id ? ' (คนของร้านผู้จำหน่าย)' : ''}</option>`).join('')}</select>
+      <label for="sC">ทะเบียนรถ/หมายเหตุ (ไม่บังคับ)</label><input id="sC">
       <div id="sL"><label>จำนวนที่ส่ง (กรณีส่งให้ผู้จำหน่าย)</label><div class="grid">${(products||[]).map(p => `<div><span class="sub">${esc(p.product_name)}</span><input type="number" min="0" value="0" data-sku="${esc(p.sku)}" class="sq"></div>`).join('')}</div></div>
       <p><button class="btn primary" id="sGo">สร้างรอบส่ง</button></p></div>
     <h2>รอบส่งที่ยังไม่ปิด</h2>${(open||[]).map(s => `<div class="card"><b>#${s.shipment_id} ${esc(s.dealer_name || 'ออเดอร์ #' + s.order_id)}</b>
-      <div class="sub">${esc(s.carrier_name || '-')} • ${esc(s.status)} • ส่งมอบแล้ว ${s.delivered}/${s.expected}</div>
+      <div class="sub">${esc([s.carrier_user_name, s.carrier_name].filter(Boolean).join(' / ') || 'ยังไม่ได้มอบหมายผู้ขนส่ง')} • ${esc(s.status)} • ส่งมอบแล้ว ${s.delivered}/${s.expected}</div>
       ${s.status === 'draft' ? `<p><button class="btn small cx" data-id="${s.shipment_id}">ยกเลิกรอบ</button></p>` : ''}</div>`).join('') || '<p class="sub">ไม่มีรอบส่งที่ค้างอยู่</p>'}`;
   $('#dSave').onclick = async () => {
     const name = $('#dN').value.trim(); if (!name) return notice('กรอกชื่อร้าน', true);
@@ -184,7 +186,8 @@ async function viewShipments(){
     const dealer = $('#sD').value || null, order = +$('#sO').value || null;
     const lines = [...document.querySelectorAll('.sq')].filter(i => +i.value > 0).map(i => ({ sku: i.dataset.sku, quantity: +i.value }));
     if (!dealer === !order) return notice('เลือกผู้จำหน่ายหรือกรอกเลขออเดอร์ อย่างใดอย่างหนึ่ง', true);
-    const { data, error } = await sb.rpc('create_shipment', { p_dealer: dealer, p_order: order, p_carrier: $('#sC').value || null, p_lines: order ? null : lines });
+    if (!$('#sU').value && !confirm('ยังไม่ได้เลือกผู้ขนส่งที่รับผิดชอบ ผู้ขนส่งจะมองไม่เห็นรอบนี้ ต้องการสร้างต่อไหม?')) return;
+    const { data, error } = await sb.rpc('create_shipment', { p_dealer: dealer, p_order: order, p_carrier: $('#sC').value || null, p_lines: order ? null : lines, p_carrier_user: $('#sU').value || null });
     error ? notice(error.message, true) : (notice(`สร้างรอบส่ง #${data} แล้ว`), viewShipments());
   };
   document.querySelectorAll('.cx').forEach(b => b.onclick = async () => {
@@ -202,7 +205,7 @@ async function viewScan(){
   const { data:open, error } = await sb.rpc('list_open_shipments');
   if (error) return notice(error.message, true);
   $('#view').innerHTML = `<label for="shSel">รอบส่ง</label>
-    <select id="shSel"><option value="">— เลือกรอบส่ง —</option>${(open||[]).map(s => `<option value="${s.shipment_id}" ${s.shipment_id === cur.id ? 'selected' : ''}>#${s.shipment_id} ${esc(s.dealer_name || 'ออเดอร์ #' + s.order_id)} • ${esc(s.carrier_name || '-')}</option>`).join('')}</select>
+    <select id="shSel"><option value="">— เลือกรอบส่ง —</option>${(open||[]).map(s => `<option value="${s.shipment_id}" ${s.shipment_id === cur.id ? 'selected' : ''}>#${s.shipment_id} ${esc(s.dealer_name || 'ออเดอร์ #' + s.order_id)} • ${esc(s.carrier_user_name || s.carrier_name || '-')}</option>`).join('')}</select>
     <div class="seg" role="group" aria-label="โหมดสแกน">
       <button data-m="load" aria-pressed="${cur.mode === 'load'}">โหลดขึ้นรถ</button>
       <button data-m="deliver" aria-pressed="${cur.mode === 'deliver'}">ส่งมอบ</button>
