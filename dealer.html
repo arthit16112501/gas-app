@@ -1,0 +1,182 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>ร้านผู้จำหน่าย</title>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Thai:wght@400;500;700&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"></script>
+<style>
+:root{--bg:#EEF1F0;--surface:#fff;--ink:#1B2A33;--muted:#5C6B73;--line:#D5DCDA;--steel:#1F4E5F;--steel-ink:#fff;--brass:#B7832F;--ok:#2C7A55;--bad:#B8391A;color-scheme:light}
+@media (prefers-color-scheme:dark){:root{--bg:#10181C;--surface:#18232A;--ink:#E7EEF0;--muted:#97A7AE;--line:#2B3A42;--steel:#5FB0C8;--steel-ink:#0B1519;--brass:#D9A650;--ok:#62C493;--bad:#F08A66;color-scheme:dark}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.5 "IBM Plex Sans Thai",system-ui,sans-serif;padding:env(safe-area-inset-top) 0 env(safe-area-inset-bottom)}
+button,input,select{font:inherit;color:inherit}
+:focus-visible{outline:3px solid var(--brass);outline-offset:2px}
+.wrap{max-width:760px;margin:0 auto;padding:12px 14px 80px}
+header{display:flex;justify-content:space-between;align-items:center;gap:8px;padding:8px 0}
+h1{font-size:1.1rem;margin:0}
+nav{display:flex;gap:4px;background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:4px;margin:6px 0 14px}
+nav button{flex:1;border:0;background:none;padding:10px 4px;border-radius:7px;cursor:pointer;color:var(--muted);font-weight:500}
+nav button[aria-selected=true]{background:var(--steel);color:var(--steel-ink)}
+.btn{border:1px solid var(--line);background:var(--surface);padding:9px 14px;border-radius:8px;cursor:pointer;font-weight:500}
+.btn.primary{background:var(--steel);color:var(--steel-ink);border-color:var(--steel)}
+input,select{width:100%;padding:10px;border:1px solid var(--line);border-radius:8px;background:var(--surface)}
+label{display:block;font-size:.9rem;color:var(--muted);margin:10px 0 4px}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:12px 14px;margin-bottom:12px}
+.sub{color:var(--muted);font-size:.9rem}.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:10px}
+table{width:100%;border-collapse:collapse}td,th{text-align:left;padding:6px 4px;border-bottom:1px solid var(--line);font-variant-numeric:tabular-nums}
+.done{color:var(--ok);font-weight:700}.neg{color:var(--bad);font-weight:700}
+.msg{padding:10px 12px;border-radius:8px;margin:8px 0;background:var(--surface);border:1px solid var(--line)}.msg.err{border-color:var(--bad);color:var(--bad)}
+.scan{font-family:ui-monospace,monospace;text-transform:uppercase}
+.hidden{display:none!important}#login{max-width:360px;margin:12vh auto;padding:0 16px}
+</style>
+</head>
+<body>
+<section id="login" class="hidden">
+  <h1>เข้าสู่ระบบร้านผู้จำหน่าย</h1>
+  <label for="em">อีเมล</label><input id="em" type="email" autocomplete="username">
+  <label for="pw">รหัสผ่าน</label><input id="pw" type="password" autocomplete="current-password">
+  <p id="loginMsg" class="msg err hidden"></p>
+  <p><button class="btn primary" id="loginBtn" style="width:100%">เข้าสู่ระบบ</button></p>
+</section>
+<main id="app" class="wrap hidden">
+  <header><h1>ร้านผู้จำหน่าย</h1><button class="btn" id="logout">ออกจากระบบ</button></header>
+  <nav role="tablist" id="tabs"></nav>
+  <div id="notice"></div>
+  <div id="view"></div>
+</main>
+<script>
+/* ===== ตั้งค่า: ใช้ค่าเดียวกับ index.html ===== */
+const SUPABASE_URL = 'https://mhxclzsmikdudynznmdr.supabase.co';
+const SUPABASE_ANON_KEY = 'sb_publishable_WWemd8D9a_Slx4jSv-YLqQ_OZZW-l9-';
+/* ============================================== */
+const $ = s => document.querySelector(s);
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const baht = n => Number(n || 0).toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' บาท';
+let sb, isManager = false, tab = '';
+
+function notice(t, err){
+  $('#notice').innerHTML = t ? `<div class="msg ${err ? 'err' : ''}" role="status">${esc(t)}</div>` : '';
+  if (t) { window.scrollTo({ top: 0, behavior: 'smooth' }); setTimeout(() => $('#notice').innerHTML = '', 8000); }
+}
+async function init(){
+  sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+  const { data:{ session } } = await sb.auth.getSession();
+  session ? start(session) : $('#login').classList.remove('hidden');
+}
+$('#loginBtn').onclick = async () => {
+  const { data, error } = await sb.auth.signInWithPassword({ email: $('#em').value.trim(), password: $('#pw').value });
+  if (error) { const m = $('#loginMsg'); m.textContent = 'อีเมลหรือรหัสผ่านไม่ถูกต้อง'; m.classList.remove('hidden'); return; }
+  $('#login').classList.add('hidden'); start(data.session);
+};
+$('#logout').onclick = async () => { await sb.auth.signOut(); location.reload(); };
+
+function start(session){
+  const role = session.user.app_metadata?.role || '';
+  $('#app').classList.remove('hidden');
+  if (role !== 'dealer' && role !== 'dealer_driver') { $('#view').innerHTML = '<p class="msg err">หน้านี้สำหรับร้านผู้จำหน่ายและคนขับของร้านเท่านั้น</p>'; return; }
+  isManager = role === 'dealer';
+  const tabs = isManager ? [['jobs','งานส่ง'],['neworder','บันทึกออเดอร์'],['money','ยอดเงิน']] : [['jobs','งานส่ง']];
+  $('#tabs').innerHTML = tabs.map(([k,v]) => `<button role="tab" data-t="${k}" aria-selected="false">${v}</button>`).join('');
+  document.querySelectorAll('#tabs button').forEach(b => b.onclick = () => go(b.dataset.t));
+  go('jobs');
+}
+function go(t){
+  tab = t;
+  document.querySelectorAll('#tabs button').forEach(b => b.setAttribute('aria-selected', b.dataset.t === t));
+  ({ jobs: viewJobs, neworder: viewNewOrder, money: viewMoney })[t]();
+}
+
+/* ---------- งานส่ง ---------- */
+async function viewJobs(){
+  const [{ data: jobs, error }, drv] = await Promise.all([sb.rpc('my_deliveries'), isManager ? sb.rpc('my_drivers') : { data: [] }]);
+  if (error) return notice(error.message, true);
+  const drivers = drv.data || [];
+  $('#view').innerHTML = (jobs || []).map(o => {
+    const unpaid = Number(o.total_price) - Number(o.paid);
+    return `<article class="card" data-o="${o.order_id}">
+      <b>#${o.order_id} ${esc(o.customer_name)}</b>
+      <div class="sub"><a href="tel:${esc(o.customer_phone)}">${esc(o.customer_phone)}</a> • ${esc(o.delivery_address)}</div>
+      <table>${(o.items || []).map(i => `<tr><td>${esc(i.product_name)}</td><td class="${i.sold >= i.quantity ? 'done' : ''}">สแกนแล้ว ${i.sold}/${i.quantity}</td></tr>`).join('')}</table>
+      <p>ยอด ${baht(o.total_price)} • รับแล้ว ${baht(o.paid)} • <span class="${unpaid > 0 ? 'neg' : 'done'}">ค้าง ${baht(unpaid)}</span></p>
+      ${isManager ? `<label>คนขับที่รับงาน</label><div class="grid"><select class="drv"><option value="">— ยังไม่มอบหมาย —</option>${drivers.map(d => `<option value="${d.user_id}" ${d.user_id === o.driver_user_id ? 'selected' : ''}>${esc(d.display_name)}</option>`).join('')}</select><button class="btn" data-act="assign">บันทึกคนขับ</button></div>` : ''}
+      <label>สแกนรหัสถังที่ส่งให้ลูกค้า (กด Enter)</label><input class="scan" autocomplete="off">
+      <label>รับเงินจากลูกค้า</label>
+      <div class="grid"><input class="amt" type="number" min="0" step="0.01" value="${unpaid > 0 ? unpaid : ''}" placeholder="จำนวนเงิน">
+        <select class="mth"><option value="cash">เงินสด</option><option value="transfer">โอนเงิน</option><option value="ebanking">e-banking</option><option value="other">อื่นๆ</option></select>
+        <input class="ref" placeholder="เลขอ้างอิง (ถ้ามี)"></div>
+      <p><button class="btn" data-act="pay">บันทึกรับเงิน</button> <button class="btn primary" data-act="done">ส่งมอบครบ ปิดงาน</button></p>
+    </article>`;
+  }).join('') || '<p class="msg">ยังไม่มีงานส่ง</p>';
+}
+document.addEventListener('keydown', async e => {
+  if (e.key !== 'Enter' || !e.target.classList.contains('scan')) return;
+  const card = e.target.closest('[data-o]'), code = e.target.value.trim().toUpperCase(); e.target.value = '';
+  if (!code) return;
+  const { data, error } = await sb.rpc('dealer_sell_cylinder', { p_code: code, p_order_id: +card.dataset.o });
+  if (error) return notice(error.message, true);
+  data.ok ? notice(`✓ ${data.product_name} ${data.sold_for_sku}/${data.ordered_for_sku} (เหลืออีก ${data.remaining_total} ใบ)`) : notice(`✗ ${data.reason} [${data.code}]`, true);
+  viewJobs();
+});
+document.addEventListener('click', async e => {
+  const b = e.target.closest('[data-act]'); if (!b) return;
+  const card = b.closest('[data-o]'), id = +card.dataset.o, act = b.dataset.act;
+  if (act === 'assign') {
+    const { error } = await sb.rpc('dealer_assign_driver', { p_order_id: id, p_driver: card.querySelector('.drv').value || null });
+    error ? notice(error.message, true) : (notice('บันทึกคนขับแล้ว'), viewJobs());
+  } else if (act === 'pay') {
+    const { data, error } = await sb.rpc('record_payment', { p_order_id: id, p_amount: +card.querySelector('.amt').value, p_method: card.querySelector('.mth').value, p_reference: card.querySelector('.ref').value || null });
+    error ? notice(error.message, true) : (notice(`บันทึกรับเงินแล้ว ค้างอีก ${baht(data.unpaid)}`), viewJobs());
+  } else if (act === 'done') {
+    const { data, error } = await sb.rpc('dealer_complete_order', { p_order_id: id });
+    if (error) return notice(error.message, true);
+    data.ok ? (notice(data.unpaid > 0 ? `ปิดงานแล้ว แต่ยังค้างรับเงิน ${baht(data.unpaid)}` : 'ปิดงานแล้ว รับเงินครบ'), viewJobs()) : notice(data.reason, true);
+  }
+});
+
+/* ---------- บันทึกออเดอร์ของลูกค้าร้านเอง ---------- */
+async function viewNewOrder(){
+  const { data: prods, error } = await sb.rpc('dealer_products');
+  if (error) return notice(error.message, true);
+  $('#view').innerHTML = `<div class="card"><p class="sub">บันทึกออเดอร์ของลูกค้าที่ร้านคุณดูแลเอง ระบบจะส่งงานนี้เข้าคิวงานส่งของร้านทันที</p>
+    <label for="nP">เบอร์โทรลูกค้า</label><input id="nP" inputmode="tel">
+    <label for="nN">ชื่อลูกค้า</label><input id="nN">
+    <label for="nA">ที่อยู่จัดส่ง</label><input id="nA">
+    <label>จำนวนถัง</label><div class="grid">${(prods || []).map(p => `<div><span class="sub">${esc(p.product_name)} (${baht(p.price)})</span><input type="number" min="0" value="0" class="nq" data-sku="${esc(p.sku)}"></div>`).join('')}</div>
+    <p><button class="btn primary" id="nGo">บันทึกออเดอร์</button></p></div>`;
+  $('#nGo').onclick = async () => {
+    const items = [...document.querySelectorAll('.nq')].filter(i => +i.value > 0).map(i => ({ sku: i.dataset.sku, quantity: +i.value }));
+    if (!items.length) return notice('เลือกจำนวนถังอย่างน้อย 1 รายการ', true);
+    const { data, error } = await sb.rpc('dealer_create_order', { p_phone: $('#nP').value, p_name: $('#nN').value, p_address: $('#nA').value, p_items: items });
+    error ? notice(error.message, true) : (notice(`บันทึกออเดอร์ #${data} แล้ว`), go('jobs'));
+  };
+}
+
+/* ---------- ยอดเงิน และแจ้งโอนให้เจ้าของ ---------- */
+async function viewMoney(){
+  const { data: s, error } = await sb.rpc('my_dealer_statement');
+  if (error) return notice(error.message, true);
+  const out = Number(s.outstanding || 0);
+  $('#view').innerHTML = `<div class="card"><table>
+    <tr><td>ขายแล้ว</td><td>${s.sold_qty || 0} ใบ • ${baht(s.sales_value)}</td></tr>
+    <tr><td>ค่าตอบแทนของร้าน</td><td>${baht(s.commission_earned)}</td></tr>
+    <tr><td>เงินที่ร้านรับจากลูกค้า</td><td>${baht(s.collected_by_dealer)}</td></tr>
+    <tr><td>โอนให้เจ้าของแล้ว (ยืนยันแล้ว)</td><td>${baht(s.remitted_confirmed)}</td></tr>
+    <tr><td>แจ้งโอนแล้ว รอเจ้าของยืนยัน</td><td>${baht(s.remitted_pending)}</td></tr>
+    <tr><td><b>${out >= 0 ? 'ยอดที่ต้องโอนให้เจ้าของ' : 'เจ้าของต้องจ่ายค่าตอบแทนให้ร้าน'}</b></td><td class="${out > 0 ? 'neg' : 'done'}"><b>${baht(Math.abs(out))}</b></td></tr></table></div>
+    <div class="card"><b>ถังที่ร้านถืออยู่</b><table>${(s.holding || []).map(h => `<tr><td>${esc(h.product_name)}</td><td>${h.qty} ใบ</td></tr>`).join('') || '<tr><td class="sub">ไม่มีถังที่ถืออยู่</td></tr>'}</table></div>
+    <div class="card"><b>แจ้งโอนเงินให้เจ้าของ</b><p class="sub">โอนเงินเข้าบัญชีเจ้าของก่อน แล้วกรอกที่นี่ ยอดจะลดลงเมื่อเจ้าของยืนยัน</p>
+      <div class="grid"><input id="rA" type="number" min="0" step="0.01" placeholder="จำนวนเงิน" value="${out > 0 ? out : ''}">
+      <select id="rM"><option value="transfer">โอนเงิน</option><option value="ebanking">e-banking</option><option value="cash">เงินสด</option><option value="other">อื่นๆ</option></select>
+      <input id="rR" placeholder="เลขอ้างอิง/วันเวลาที่โอน"></div>
+      <p><button class="btn primary" id="rGo">แจ้งโอน</button></p></div>`;
+  $('#rGo').onclick = async () => {
+    const { error } = await sb.rpc('dealer_submit_remittance', { p_amount: +$('#rA').value, p_method: $('#rM').value, p_reference: $('#rR').value || null });
+    error ? notice(error.message, true) : (notice('แจ้งโอนแล้ว รอเจ้าของยืนยัน'), viewMoney());
+  };
+}
+init();
+</script>
+</body>
+</html>
