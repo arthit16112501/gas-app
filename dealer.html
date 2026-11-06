@@ -35,13 +35,13 @@ table{width:100%;border-collapse:collapse}td,th{text-align:left;padding:6px 4px;
 <body>
 <section id="login" class="hidden">
   <h1>เข้าสู่ระบบร้านผู้จำหน่าย</h1>
-  <label for="em">อีเมล</label><input id="em" type="email" autocomplete="username">
+  <label for="em">เบอร์โทร หรืออีเมล</label><input id="em" type="email" autocomplete="username">
   <label for="pw">รหัสผ่าน</label><input id="pw" type="password" autocomplete="current-password">
   <p id="loginMsg" class="msg err hidden"></p>
   <p><button class="btn primary" id="loginBtn" style="width:100%">เข้าสู่ระบบ</button></p>
 </section>
 <main id="app" class="wrap hidden">
-  <header><h1>ร้านผู้จำหน่าย</h1><button class="btn" id="logout">ออกจากระบบ</button></header>
+  <header><h1>ร้านผู้จำหน่าย</h1><span><button class="btn" id="chpw">เปลี่ยนรหัสผ่าน</button> <button class="btn" id="logout">ออกจากระบบ</button></span></header>
   <nav role="tablist" id="tabs"></nav>
   <div id="notice"></div>
   <div id="view"></div>
@@ -66,7 +66,7 @@ async function init(){
   session ? start(session) : $('#login').classList.remove('hidden');
 }
 $('#loginBtn').onclick = async () => {
-  const { data, error } = await sb.auth.signInWithPassword({ email: $('#em').value.trim(), password: $('#pw').value });
+  const { data, error } = await sb.auth.signInWithPassword({ email: loginId($('#em').value), password: $('#pw').value });
   if (error) { const m = $('#loginMsg'); m.textContent = 'อีเมลหรือรหัสผ่านไม่ถูกต้อง'; m.classList.remove('hidden'); return; }
   $('#login').classList.add('hidden'); start(data.session);
 };
@@ -77,7 +77,7 @@ function start(session){
   $('#app').classList.remove('hidden');
   if (role !== 'dealer' && role !== 'dealer_driver') { $('#view').innerHTML = '<p class="msg err">หน้านี้สำหรับร้านผู้จำหน่ายและคนขับของร้านเท่านั้น</p>'; return; }
   isManager = role === 'dealer';
-  const tabs = isManager ? [['jobs','งานส่ง'],['neworder','บันทึกออเดอร์'],['money','ยอดเงิน']] : [['jobs','งานส่ง']];
+  const tabs = isManager ? [['jobs','งานส่ง'],['neworder','บันทึกออเดอร์'],['drivers','คนขับ'],['money','ยอดเงิน']] : [['jobs','งานส่ง']];
   $('#tabs').innerHTML = tabs.map(([k,v]) => `<button role="tab" data-t="${k}" aria-selected="false">${v}</button>`).join('');
   document.querySelectorAll('#tabs button').forEach(b => b.onclick = () => go(b.dataset.t));
   go('jobs');
@@ -85,7 +85,7 @@ function start(session){
 function go(t){
   tab = t;
   document.querySelectorAll('#tabs button').forEach(b => b.setAttribute('aria-selected', b.dataset.t === t));
-  ({ jobs: viewJobs, neworder: viewNewOrder, money: viewMoney })[t]();
+  ({ jobs: viewJobs, neworder: viewNewOrder, drivers: viewDrivers, money: viewMoney })[t]();
 }
 
 /* ---------- งานส่ง ---------- */
@@ -176,6 +176,58 @@ async function viewMoney(){
     error ? notice(error.message, true) : (notice('แจ้งโอนแล้ว รอเจ้าของยืนยัน'), viewMoney());
   };
 }
+/* ---------- ล็อกอินด้วยเบอร์โทร / เปลี่ยนรหัสผ่าน ---------- */
+function loginId(v){
+  v = v.trim(); if (v.includes('@')) return v;
+  let d = v.replace(/\D/g, ''); if (d.startsWith('66') && d.length === 11) d = '0' + d.slice(2);
+  return d + '@drv.example.com';
+}
+$('#chpw').onclick = async () => {
+  const pw = prompt('ตั้งรหัสผ่านใหม่ (อย่างน้อย 8 ตัวอักษร)'); if (pw === null) return;
+  if (pw.length < 8) return notice('รหัสผ่านต้องมีอย่างน้อย 8 ตัวอักษร', true);
+  const { error } = await sb.auth.updateUser({ password: pw });
+  error ? notice('เปลี่ยนรหัสผ่านไม่สำเร็จ ลองใหม่อีกครั้ง', true) : notice('เปลี่ยนรหัสผ่านแล้ว');
+};
+
+/* ---------- ลงทะเบียนและจัดการคนขับของร้าน ---------- */
+async function callFn(body){
+  const { data, error } = await sb.functions.invoke('register-driver', { body });
+  if (error) { let m = 'ดำเนินการไม่สำเร็จ'; try { m = (await error.context.json()).error || m; } catch {} throw new Error(m); }
+  return data;
+}
+function secretCard(title, login, pw){
+  return `<div class="card" style="border-color:var(--brass)"><b>${esc(title)}</b>
+    <p>เบอร์เข้าสู่ระบบ: <b>${esc(login || '')}</b><br>รหัสผ่านชั่วคราว: <b class="scan" style="text-transform:none;font-size:1.2rem">${esc(pw)}</b></p>
+    <p class="sub">แสดงครั้งเดียว จดหรือแจ้งคนขับทันที และให้คนขับกด "เปลี่ยนรหัสผ่าน" หลังเข้าสู่ระบบครั้งแรก</p></div>`;
+}
+async function viewDrivers(secretHtml = ''){
+  const { data: list, error } = await sb.rpc('my_driver_list');
+  if (error) return notice(error.message, true);
+  $('#view').innerHTML = secretHtml + `<div class="card"><b>ลงทะเบียนคนขับใหม่</b>
+    <label for="dN">ชื่อคนขับ</label><input id="dN">
+    <div class="grid"><div><label for="dP">เบอร์โทร (ใช้เป็นชื่อเข้าสู่ระบบ)</label><input id="dP" inputmode="tel"></div>
+    <div><label for="dV">ทะเบียนรถ (ไม่บังคับ)</label><input id="dV"></div></div>
+    <p><button class="btn primary" id="dGo">ลงทะเบียน</button></p></div>
+    <div class="card"><b>คนขับของร้าน</b><table>${(list || []).map(d => `<tr data-u="${d.user_id}"><td>${esc(d.display_name)}<div class="sub">${esc(d.phone || '')} ${esc(d.vehicle_plate || '')}</div></td>
+      <td class="${d.is_active ? 'done' : 'neg'}">${d.is_active ? 'ใช้งาน' : 'ปิดบัญชี'}</td>
+      <td><button class="btn" data-fn="reset_password">รีเซ็ตรหัส</button> <button class="btn" data-fn="${d.is_active ? 'deactivate' : 'reactivate'}">${d.is_active ? 'ปิดบัญชี' : 'เปิดบัญชี'}</button></td></tr>`).join('') || '<tr><td class="sub">ยังไม่มีคนขับ</td></tr>'}</table></div>`;
+  $('#dGo').onclick = async () => {
+    try {
+      const r = await callFn({ action: 'create', name: $('#dN').value, phone: $('#dP').value, vehicle_plate: $('#dV').value });
+      viewDrivers(secretCard('ลงทะเบียนสำเร็จ', r.login, r.temp_password));
+    } catch (e) { notice(e.message, true); }
+  };
+  document.querySelectorAll('[data-fn]').forEach(b => b.onclick = async () => {
+    const uid = b.closest('tr').dataset.u, fn = b.dataset.fn;
+    if (fn !== 'reset_password' && !confirm(fn === 'deactivate' ? 'ปิดบัญชีคนขับคนนี้? จะเข้าสู่ระบบไม่ได้ทันที' : 'เปิดบัญชีคนขับคนนี้อีกครั้ง?')) return;
+    try {
+      const r = await callFn({ action: fn, user_id: uid });
+      viewDrivers(fn === 'reset_password' ? secretCard('รีเซ็ตรหัสผ่านแล้ว', '', r.temp_password) : '');
+      if (fn !== 'reset_password') notice('ดำเนินการแล้ว');
+    } catch (e) { notice(e.message, true); }
+  });
+}
+
 init();
 </script>
 </body>
