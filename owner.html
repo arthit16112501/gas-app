@@ -1,0 +1,284 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>เจ้าของ: ผู้จำหน่ายและค่าตอบแทน</title>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Thai:wght@400;500;700&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"></script>
+<style>
+:root{--bg:#EEF1F0;--surface:#fff;--ink:#1B2A33;--muted:#5C6B73;--line:#D5DCDA;--steel:#1F4E5F;--steel-ink:#fff;--brass:#B7832F;--ok:#2C7A55;--bad:#B8391A;color-scheme:light}
+@media (prefers-color-scheme:dark){:root{--bg:#10181C;--surface:#18232A;--ink:#E7EEF0;--muted:#97A7AE;--line:#2B3A42;--steel:#5FB0C8;--steel-ink:#0B1519;--brass:#D9A650;--ok:#62C493;--bad:#F08A66;color-scheme:dark}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.5 "IBM Plex Sans Thai",system-ui,sans-serif;padding:env(safe-area-inset-top) 0 env(safe-area-inset-bottom)}
+button,input,select{font:inherit;color:inherit}
+:focus-visible{outline:3px solid var(--brass);outline-offset:2px}
+.wrap{max-width:900px;margin:0 auto;padding:12px 14px 80px}
+header{display:flex;justify-content:space-between;align-items:center;gap:8px;padding:8px 0;flex-wrap:wrap}
+h1{font-size:1.1rem;margin:0}h2{font-size:1rem;margin:0 0 4px}
+nav{display:flex;gap:4px;background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:4px;margin:6px 0 14px}
+nav button{flex:1;border:0;background:none;padding:10px 4px;border-radius:7px;cursor:pointer;color:var(--muted);font-weight:500}
+nav button[aria-selected=true]{background:var(--steel);color:var(--steel-ink)}
+.btn{border:1px solid var(--line);background:var(--surface);padding:9px 14px;border-radius:8px;cursor:pointer;font-weight:500}
+.btn.primary{background:var(--steel);color:var(--steel-ink);border-color:var(--steel)}
+.btn.danger{color:var(--bad);border-color:var(--bad)}
+.btn.sm{padding:5px 10px;font-size:.88rem}
+input,select{width:100%;padding:10px;border:1px solid var(--line);border-radius:8px;background:var(--surface)}
+label{display:block;font-size:.9rem;color:var(--muted);margin:10px 0 4px}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:12px 14px;margin-bottom:12px}
+.sub{color:var(--muted);font-size:.9rem}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;align-items:end}
+.row{display:flex;justify-content:space-between;gap:10px;align-items:center;flex-wrap:wrap}
+.table-scroll{overflow-x:auto}
+table{width:100%;border-collapse:collapse}td,th{text-align:left;padding:6px 6px;border-bottom:1px solid var(--line);font-variant-numeric:tabular-nums;vertical-align:top}
+td.n,th.n{text-align:right}
+.done{color:var(--ok);font-weight:700}.neg{color:var(--bad);font-weight:700}.warn{color:var(--brass);font-weight:700}
+.void{text-decoration:line-through;color:var(--muted)}
+.msg{padding:10px 12px;border-radius:8px;margin:8px 0;background:var(--surface);border:1px solid var(--line)}.msg.err{border-color:var(--bad);color:var(--bad)}
+.tag{display:inline-block;font-size:.8rem;padding:1px 8px;border-radius:99px;border:1px solid var(--line);color:var(--muted)}
+.big{font-size:1.25rem;font-weight:700}
+.hidden{display:none!important}#login{max-width:360px;margin:12vh auto;padding:0 16px}
+</style>
+</head>
+<body>
+<section id="login" class="hidden">
+  <h1>เข้าสู่ระบบเจ้าของ</h1>
+  <label for="em">อีเมลแอดมิน</label><input id="em" type="email" autocomplete="username">
+  <label for="pw">รหัสผ่าน</label><input id="pw" type="password" autocomplete="current-password">
+  <p id="loginMsg" class="msg err hidden"></p>
+  <p><button class="btn primary" id="loginBtn" style="width:100%">เข้าสู่ระบบ</button></p>
+</section>
+<main id="app" class="wrap hidden">
+  <header><h1>เจ้าของ: ผู้จำหน่ายและค่าตอบแทน</h1><span><button class="btn" id="refresh">รีเฟรช</button> <button class="btn" id="logout">ออกจากระบบ</button></span></header>
+  <nav role="tablist" id="tabs"></nav>
+  <div id="notice"></div>
+  <div id="view"></div>
+</main>
+<script>
+/* ===== ตั้งค่า: ใช้ค่าเดียวกับ dealer.html ===== */
+const SUPABASE_URL = 'https://mhxclzsmikdudynznmdr.supabase.co';
+const SUPABASE_ANON_KEY = 'sb_publishable_WWemd8D9a_Slx4jSv-YLqQ_OZZW-l9-';
+/* ============================================== */
+const $ = s => document.querySelector(s);
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const baht = n => Number(n || 0).toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' บาท';
+const dt = s => s ? new Date(s).toLocaleString('th-TH', { dateStyle: 'short', timeStyle: 'short' }) : '';
+const METHOD = { cash: 'เงินสด', transfer: 'โอนเงิน', ebanking: 'e-banking', other: 'อื่นๆ' };
+const OPEN = ['รอดำเนินการ', 'กำลังจัดส่ง'];
+let sb, tab = 'balance', ordFilter = 'open';
+
+function notice(t, err){
+  $('#notice').innerHTML = t ? `<div class="msg ${err ? 'err' : ''}" role="status">${esc(t)}</div>` : '';
+  if (t) { window.scrollTo({ top: 0, behavior: 'smooth' }); setTimeout(() => $('#notice').innerHTML = '', 8000); }
+}
+function friendly(e){
+  if (!e) return '';
+  if (e.code === '23505') return 'มีอัตราของร้าน/ขนาดนี้ที่วันเริ่มใช้เดียวกันอยู่แล้ว ให้เลือกวันที่เริ่มใช้เป็นวันอื่น';
+  if (e.code === '42501') return 'ไม่มีสิทธิ์ใช้งาน ลองออกจากระบบแล้วเข้าใหม่';
+  return e.message || String(e);
+}
+async function must(p){ const r = await p; if (r.error) throw r.error; return r.data; }
+
+async function init(){
+  sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+  const { data:{ session } } = await sb.auth.getSession();
+  session ? start(session) : $('#login').classList.remove('hidden');
+}
+$('#loginBtn').onclick = async () => {
+  const { data, error } = await sb.auth.signInWithPassword({ email: $('#em').value.trim(), password: $('#pw').value });
+  if (error) { const m = $('#loginMsg'); m.textContent = 'อีเมลหรือรหัสผ่านไม่ถูกต้อง'; m.classList.remove('hidden'); return; }
+  $('#login').classList.add('hidden'); start(data.session);
+};
+$('#logout').onclick = async () => { await sb.auth.signOut(); location.reload(); };
+$('#refresh').onclick = () => go(tab);
+
+function start(session){
+  const role = session.user.app_metadata?.role || '';
+  $('#app').classList.remove('hidden');
+  if (role !== 'admin' && role !== 'staff') {
+    $('#tabs').classList.add('hidden');
+    $('#view').innerHTML = '<p class="msg err">หน้านี้สำหรับเจ้าของและแอดมินเท่านั้น</p>'; return;
+  }
+  const tabs = [['balance','ยอดค้างผู้จำหน่าย'],['remit','ยืนยันการโอน'],['orders','ออเดอร์และรับเงิน'],['rates','อัตราค่าตอบแทน']];
+  $('#tabs').innerHTML = tabs.map(([k,v]) => `<button role="tab" data-t="${k}" aria-selected="false">${v}</button>`).join('');
+  document.querySelectorAll('#tabs button').forEach(b => b.onclick = () => go(b.dataset.t));
+  go('balance');
+}
+async function go(t){
+  tab = t;
+  document.querySelectorAll('#tabs button').forEach(b => b.setAttribute('aria-selected', b.dataset.t === t));
+  $('#view').innerHTML = '<p class="sub">กำลังโหลด…</p>';
+  try { await ({ balance: viewBalance, remit: viewRemit, orders: viewOrders, rates: viewRates })[t](); }
+  catch (e) { $('#view').innerHTML = ''; notice(friendly(e), true); }
+}
+
+/* ---------- ยอดค้างผู้จำหน่าย ---------- */
+async function viewBalance(){
+  const [bal, hold] = await Promise.all([
+    must(sb.from('v_dealer_balance').select('*').order('name')),
+    must(sb.from('cylinders').select('sku,shipment_id').eq('status', 'delivered').limit(5000))
+  ]);
+  const shipIds = [...new Set(hold.map(h => h.shipment_id).filter(Boolean))];
+  const ships = shipIds.length ? await must(sb.from('shipments').select('shipment_id,dealer_id').in('shipment_id', shipIds)) : [];
+  const shipDealer = Object.fromEntries(ships.map(s => [s.shipment_id, s.dealer_id]));
+  const holding = {};
+  hold.forEach(h => { const d = shipDealer[h.shipment_id]; if (!d) return; ((holding[d] ||= {})[h.sku] ||= 0); holding[d][h.sku]++; });
+
+  $('#view').innerHTML = `<p class="sub">ยอดค้าง = เงินที่ร้านรับไว้ − ค่าตอบแทนทั้งหมด − ยอดโอนที่คุณยืนยันแล้ว (ยอดที่ร้านแจ้งโอนแต่ยังไม่ยืนยันยังไม่ถูกหัก)</p>` +
+    (bal.map(b => {
+      const out = Number(b.outstanding);
+      const [txt, cls] = Math.abs(out) < 0.005 ? ['ไม่มียอดค้าง', 'done'] : out > 0 ? [`ร้านต้องโอนให้เรา ${baht(out)}`, 'neg'] : [`เราต้องจ่ายค่าตอบแทนให้ร้าน ${baht(-out)}`, 'warn'];
+      const h = holding[b.dealer_id] || {};
+      const hs = Object.entries(h).map(([k, v]) => `${esc(k)} × ${v}`).join(' • ');
+      return `<article class="card">
+        <div class="row"><h2>${esc(b.name)}</h2><span class="big ${cls}">${txt}</span></div>
+        <div class="table-scroll"><table>
+          <tr><td>ขายแล้ว</td><td class="n">${b.sold_qty} ถัง • ${baht(b.sales_value)}</td></tr>
+          <tr><td>ค่าตอบแทนสะสม</td><td class="n">${baht(b.commission_earned)}</td></tr>
+          <tr><td>เงินที่ร้านรับไว้จากลูกค้า</td><td class="n">${baht(b.collected_by_dealer)}</td></tr>
+          <tr><td>โอนให้เราแล้ว (ยืนยันแล้ว)</td><td class="n">${baht(b.remitted_confirmed)}</td></tr>
+          <tr><td>แจ้งโอนรอยืนยัน</td><td class="n ${Number(b.remitted_pending) > 0 ? 'warn' : ''}">${baht(b.remitted_pending)}</td></tr>
+          <tr><td>ลูกค้ายังไม่ชำระ (ยอดขาย − เงินที่รับทุกช่องทาง)</td><td class="n">${baht(b.unpaid_by_consumers)}</td></tr>
+          <tr><td>ถังที่ร้านถืออยู่ (ยังไม่ขาย)</td><td class="n">${hs || '—'}</td></tr>
+        </table></div></article>`;
+    }).join('') || '<p class="msg">ยังไม่มีผู้จำหน่ายในระบบ</p>');
+}
+
+/* ---------- ยืนยันการโอน ---------- */
+async function viewRemit(){
+  const [rows, dealers] = await Promise.all([
+    must(sb.from('dealer_remittances').select('*').order('remittance_id', { ascending: false }).limit(60)),
+    must(sb.from('dealers').select('id,name'))
+  ]);
+  const dn = Object.fromEntries(dealers.map(d => [d.id, d.name]));
+  const pending = rows.filter(r => r.status === 'submitted'), done = rows.filter(r => r.status !== 'submitted');
+  const stLabel = { confirmed: ['ยืนยันแล้ว', 'done'], rejected: ['ปฏิเสธ', 'neg'] };
+  $('#view').innerHTML = `<h2>รอยืนยัน (${pending.length})</h2>` +
+    (pending.map(r => `<article class="card" data-r="${r.remittance_id}">
+      <div class="row"><b>${esc(dn[r.dealer_id] || '?')}</b><span class="big">${baht(r.amount)}</span></div>
+      <div class="sub">${METHOD[r.method] || esc(r.method)} • อ้างอิง: ${esc(r.reference || '—')} • แจ้งเมื่อ ${dt(r.submitted_at)}</div>
+      <p class="sub">ตรวจยอดเงินเข้าบัญชีหรือสลิปให้ตรงก่อนกดยืนยัน</p>
+      <p><button class="btn primary" data-act="rconfirm">ยืนยันว่าได้รับเงินแล้ว</button> <button class="btn danger" data-act="rreject">ปฏิเสธ</button></p>
+    </article>`).join('') || '<p class="msg">ไม่มีรายการรอยืนยัน</p>') +
+    `<h2 style="margin-top:18px">ประวัติล่าสุด</h2><div class="card table-scroll"><table>
+      <tr><th>วันที่</th><th>ร้าน</th><th class="n">จำนวน</th><th>วิธี</th><th>สถานะ</th><th>หมายเหตุ</th></tr>
+      ${done.map(r => { const [t, c] = stLabel[r.status] || [r.status, '']; return `<tr><td>${dt(r.decided_at || r.submitted_at)}</td><td>${esc(dn[r.dealer_id] || '?')}</td><td class="n">${baht(r.amount)}</td><td>${METHOD[r.method] || ''}</td><td class="${c}">${t}</td><td>${esc(r.decision_note || r.reference || '')}</td></tr>`; }).join('') || '<tr><td colspan="6" class="sub">ยังไม่มีประวัติ</td></tr>'}
+    </table></div>`;
+}
+
+/* ---------- ออเดอร์: มอบให้ร้าน + รับเงินที่เจ้าของรับเอง + ยกเลิกรายการรับชำระ ---------- */
+async function viewOrders(){
+  const [orders, dealers] = await Promise.all([
+    must(sb.from('orders').select('order_id,order_status,total_price,dealer_id,customer_id,contact_name,delivery_address,created_at,source')
+      .neq('order_status', 'ยกเลิก').order('order_id', { ascending: false }).limit(100)),
+    must(sb.from('dealers').select('id,name').order('name'))
+  ]);
+  const cids = [...new Set(orders.map(o => o.customer_id).filter(Boolean))], oids = orders.map(o => o.order_id);
+  const [custs, pays] = await Promise.all([
+    cids.length ? must(sb.from('customers').select('id,name,phone').in('id', cids)) : [],
+    oids.length ? must(sb.from('payments').select('payment_id,order_id,amount,method,received_by,dealer_id,reference,recorded_at,voided_at,void_reason').in('order_id', oids).order('payment_id')) : []
+  ]);
+  const cm = Object.fromEntries(custs.map(c => [c.id, c])), dn = Object.fromEntries(dealers.map(d => [d.id, d.name]));
+  const pm = {}; pays.forEach(p => (pm[p.order_id] ||= []).push(p));
+  const view = orders.map(o => {
+    const ps = pm[o.order_id] || [];
+    const paid = ps.filter(p => !p.voided_at).reduce((s, p) => s + Number(p.amount), 0);
+    return { ...o, ps, paid, unpaid: Number(o.total_price || 0) - paid };
+  }).filter(o => ordFilter === 'all' || (ordFilter === 'open' ? OPEN.includes(o.order_status) : o.unpaid > 0.004));
+
+  $('#view').innerHTML = `<div class="card"><label for="ordF">แสดง (ออเดอร์ล่าสุด 100 รายการที่ไม่ได้ยกเลิก)</label>
+    <select id="ordF"><option value="open" ${ordFilter === 'open' ? 'selected' : ''}>งานที่ยังไม่ปิด</option><option value="unpaid" ${ordFilter === 'unpaid' ? 'selected' : ''}>ที่ยังรับเงินไม่ครบ</option><option value="all" ${ordFilter === 'all' ? 'selected' : ''}>ทั้งหมด</option></select></div>` +
+    (view.map(o => {
+      const c = cm[o.customer_id] || {}, isOpen = OPEN.includes(o.order_status);
+      return `<article class="card" data-o="${o.order_id}">
+        <div class="row"><b>#${o.order_id} ${esc(o.contact_name || c.name || '')}</b><span class="tag">${esc(o.order_status)}</span></div>
+        <div class="sub">${esc(c.phone || '')} • ${esc(o.delivery_address || '')}</div>
+        <p>ยอด ${baht(o.total_price)} • รับแล้ว ${baht(o.paid)} • <span class="${o.unpaid > 0.004 ? 'neg' : 'done'}">ค้าง ${baht(o.unpaid)}</span><br>
+        <span class="sub">ผู้ส่ง: ${o.dealer_id ? esc(dn[o.dealer_id] || '?') : 'โกดังเจ้าของ'}</span></p>
+        ${isOpen ? `<label>มอบให้ร้านผู้จำหน่าย</label><div class="grid"><select class="dl"><option value="">— โกดังเจ้าของส่งเอง —</option>${dealers.map(d => `<option value="${d.id}" ${d.id === o.dealer_id ? 'selected' : ''}>${esc(d.name)}</option>`).join('')}</select><button class="btn" data-act="assign">บันทึกการมอบ</button></div>` : ''}
+        ${o.ps.length ? `<div class="table-scroll"><table>${o.ps.map(p => `<tr class="${p.voided_at ? 'void' : ''}"><td>${dt(p.recorded_at)}</td><td>${p.received_by === 'dealer' ? 'ร้านรับ' : 'เจ้าของรับ'}</td><td>${METHOD[p.method] || ''}</td><td class="n">${baht(p.amount)}</td><td>${esc(p.reference || '')}${p.voided_at ? ' (ยกเลิก: ' + esc(p.void_reason || '') + ')' : ''}</td><td>${p.voided_at ? '' : `<button class="btn sm danger" data-act="void" data-p="${p.payment_id}">ยกเลิกรายการ</button>`}</td></tr>`).join('')}</table></div>` : ''}
+        ${o.unpaid > 0.004 ? `<label>บันทึกเงินที่เจ้าของรับเอง</label><div class="grid"><input class="amt" type="number" min="0" step="0.01" value="${o.unpaid}"><select class="mth"><option value="cash">เงินสด</option><option value="transfer">โอนเงิน</option><option value="ebanking">e-banking</option><option value="other">อื่นๆ</option></select><input class="ref" placeholder="เลขอ้างอิง (ถ้ามี)"><button class="btn primary" data-act="pay">บันทึกรับเงิน</button></div>` : ''}
+      </article>`;
+    }).join('') || '<p class="msg">ไม่มีออเดอร์ตามเงื่อนไข</p>');
+  $('#ordF').onchange = e => { ordFilter = e.target.value; go('orders'); };
+}
+
+/* ---------- อัตราค่าตอบแทน ---------- */
+async function viewRates(){
+  const [rates, dealers, prods] = await Promise.all([
+    must(sb.from('commission_rates').select('*').order('effective_from', { ascending: false }).order('id', { ascending: false })),
+    must(sb.from('dealers').select('id,name').order('name')),
+    must(sb.from('products').select('sku,product_name,price,is_active').order('sku'))
+  ]);
+  const today = new Date().toISOString().slice(0, 10), dn = Object.fromEntries(dealers.map(d => [d.id, d.name]));
+  const key = r => (r.dealer_id || 'central') + '|' + r.sku;
+  const current = {};
+  rates.forEach(r => { if (r.effective_from <= today && !current[key(r)]) current[key(r)] = r; });  // เรียงใหม่ไปเก่าแล้ว ตัวแรกที่เริ่มใช้แล้วคือที่ใช้อยู่
+  const noCentral = prods.filter(p => p.is_active && !current['central|' + p.sku]);
+  const fmt = r => r.percent !== null && r.percent !== undefined ? `${Number(r.percent)}%` : `${baht(r.fixed_baht)} ต่อถัง`;
+
+  $('#view').innerHTML = `
+    ${noCentral.length ? `<p class="msg err">ยังไม่มีอัตรากลางของ: ${noCentral.map(p => esc(p.product_name || p.sku)).join(', ')} — ร้านที่ไม่มีอัตราเฉพาะของขนาดนั้นจะขายถังขนาดนี้ไม่ได้</p>` : ''}
+    <div class="card"><h2>ตั้งอัตราใหม่</h2>
+      <p class="sub">อัตราใหม่ไม่แก้ของเดิม ระบบเก็บเป็นแถวใหม่ตามวันที่เริ่มใช้ ถังที่ขายไปแล้วใช้อัตราตอนขาย อัตราเฉพาะร้านมาก่อนอัตรากลาง</p>
+      <div class="grid">
+        <div><label for="rD">ใช้กับ</label><select id="rD"><option value="">ทุกร้าน (อัตรากลาง)</option>${dealers.map(d => `<option value="${d.id}">${esc(d.name)}</option>`).join('')}</select></div>
+        <div><label for="rS">ขนาดถัง</label><select id="rS">${prods.map(p => `<option value="${esc(p.sku)}">${esc(p.product_name || p.sku)}</option>`).join('')}</select></div>
+        <div><label for="rT">วิธีคิด</label><select id="rT"><option value="percent">เปอร์เซ็นต์ของราคาขาย</option><option value="fixed">บาทต่อถัง</option></select></div>
+        <div><label for="rV" id="rVL">เปอร์เซ็นต์ (0-100)</label><input id="rV" type="number" min="0" step="0.01" inputmode="decimal"></div>
+        <div><label for="rF">วันที่เริ่มใช้ (ว่าง = เริ่มทันที)</label><input id="rF" type="date"></div>
+        <div><button class="btn primary" id="rGo" style="width:100%">บันทึกอัตรา</button></div>
+      </div></div>
+    <h2>อัตราที่ใช้อยู่ตอนนี้</h2>
+    <div class="card table-scroll"><table><tr><th>ใช้กับ</th><th>ขนาด</th><th>อัตรา</th><th>เริ่มใช้</th></tr>
+      ${Object.values(current).sort((a, b) => String(a.dealer_id || '').localeCompare(String(b.dealer_id || '')) || a.sku.localeCompare(b.sku))
+        .map(r => `<tr><td>${r.dealer_id ? esc(dn[r.dealer_id] || '?') : 'ทุกร้าน (กลาง)'}</td><td>${esc(r.sku)}</td><td>${fmt(r)}</td><td>${esc(r.effective_from)}</td></tr>`).join('') || '<tr><td colspan="4" class="sub">ยังไม่ได้ตั้งอัตรา</td></tr>'}
+    </table></div>
+    ${rates.some(r => r.effective_from > today) ? `<h2>ตั้งล่วงหน้า (ยังไม่เริ่มใช้)</h2><div class="card table-scroll"><table>${rates.filter(r => r.effective_from > today).map(r => `<tr><td>${r.dealer_id ? esc(dn[r.dealer_id] || '?') : 'ทุกร้าน (กลาง)'}</td><td>${esc(r.sku)}</td><td>${fmt(r)}</td><td>เริ่ม ${esc(r.effective_from)}</td></tr>`).join('')}</table></div>` : ''}`;
+
+  $('#rT').onchange = e => { $('#rVL').textContent = e.target.value === 'percent' ? 'เปอร์เซ็นต์ (0-100)' : 'บาทต่อถัง'; };
+  $('#rGo').onclick = async () => {
+    const isPct = $('#rT').value === 'percent', v = $('#rV').value;
+    if (v === '' || isNaN(+v) || +v < 0 || (isPct && +v > 100)) return notice(isPct ? 'ใส่เปอร์เซ็นต์ระหว่าง 0 ถึง 100' : 'ใส่จำนวนบาทที่ไม่ติดลบ', true);
+    const args = { p_dealer: $('#rD').value || null, p_sku: $('#rS').value, p_percent: isPct ? +v : null, p_fixed: isPct ? null : +v };
+    if ($('#rF').value) args.p_from = $('#rF').value;
+    const { error } = await sb.rpc('set_commission_rate', args);
+    error ? notice(friendly(error), true) : (notice('บันทึกอัตราแล้ว'), viewRates());
+  };
+}
+
+/* ---------- ปุ่มต่างๆ ---------- */
+document.addEventListener('click', async e => {
+  const b = e.target.closest('[data-act]'); if (!b) return;
+  const act = b.dataset.act;
+  try {
+    if (act === 'rconfirm' || act === 'rreject') {
+      const id = +b.closest('[data-r]').dataset.r;
+      let note = null;
+      if (act === 'rreject') { note = prompt('เหตุผลที่ปฏิเสธ (เช่น ยอดไม่เข้าบัญชี)'); if (note === null) return; }
+      else if (!confirm('ยืนยันว่าได้รับเงินจำนวนนี้เข้าบัญชีแล้ว? ยอดค้างของร้านจะถูกหักทันที')) return;
+      await must(sb.rpc('confirm_remittance', { p_id: id, p_confirm: act === 'rconfirm', p_note: note }));
+      notice(act === 'rconfirm' ? 'ยืนยันการโอนแล้ว' : 'ปฏิเสธรายการแล้ว'); viewRemit();
+    } else {
+      const card = b.closest('[data-o]'), id = card && +card.dataset.o;
+      if (act === 'assign') {
+        const dealer = card.querySelector('.dl').value || null;
+        if (!confirm(dealer ? `มอบออเดอร์ #${id} ให้ร้านนี้? สต็อกโกดังที่จองไว้จะถูกคืน` : `นำออเดอร์ #${id} กลับมาส่งเอง? ระบบจะตัดสต็อกโกดังอีกครั้ง`)) return;
+        await must(sb.rpc('assign_order_to_dealer', { p_order_id: id, p_dealer: dealer }));
+        notice('บันทึกการมอบแล้ว'); viewOrders();
+      } else if (act === 'pay') {
+        const r = await must(sb.rpc('record_owner_payment', { p_order_id: id, p_amount: +card.querySelector('.amt').value, p_method: card.querySelector('.mth').value, p_reference: card.querySelector('.ref').value || null }));
+        notice(`บันทึกรับเงินแล้ว ค้างอีก ${baht(r.unpaid)}`); viewOrders();
+      } else if (act === 'void') {
+        const reason = prompt('เหตุผลที่ยกเลิกรายการรับชำระ'); if (reason === null) return;
+        await must(sb.rpc('void_payment', { p_payment_id: +b.dataset.p, p_reason: reason }));
+        notice('ยกเลิกรายการรับชำระแล้ว'); viewOrders();
+      }
+    }
+  } catch (err) { notice(friendly(err), true); }
+});
+
+init();
+</script>
+</body>
+</html>
